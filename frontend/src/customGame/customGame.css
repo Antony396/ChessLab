@@ -1,0 +1,146 @@
+.hero-chess-app {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.shoot-toggle-btn,
+.start-game-btn,
+.custom-play-toolbar button {
+  font: inherit;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.custom-play-board {
+  width: 100%;
+  max-width: 420px;
+  margin: 8px auto;
+}
+
+.start-buttons-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.start-game-btn {
+  display: block;
+  margin: 0;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 8px 20px;
+}
+
+.start-game-btn.online {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.start-game-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.custom-play-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.custom-play-turn {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.shoot-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin: 10px 0;
+}
+
+.shoot-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.shoot-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shoot-toggle-hint {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.custom-play-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.online-waiting-panel {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.online-waiting-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.online-waiting-link {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.online-waiting-link-row button {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.action-log {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-h);
+  padding-left: 20px;
+  max-height: 200px;
+  overflow-y: auto;
+}

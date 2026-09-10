@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: chess-eval-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Set this once you know the deployed Vercel URL, e.g.
+      # https://your-app.vercel.app (comma-separate more than one origin).
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CHESS_EVAL_CONTACT_EMAIL
+        sync: false

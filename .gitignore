@@ -1,0 +1,15 @@
+backend/venv/
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+frontend/node_modules/
+frontend/dist/
+*.pyc
+.env
+
+# Large reference/inspiration images, not used by the running app
+/Realchessassets.png
+/allChesspeices.png
+/better2d peices and board.png
+/scratch_piece_preview/
+/scratch_piece_preview2/
