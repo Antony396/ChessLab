@@ -414,6 +414,104 @@ def _side_has_a_real_move(game: store.CustomGame, color: chess.Color) -> bool:
     return False
 
 
+def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optional[tuple[chess.Square, chess.Square, bool]]:
+    """Stockfish (see ai.py) only ever proposes a standard chess move - it
+    has no idea a Dragon/Wizard/Hydra/Archer/Cyclops/Mirror can move in
+    ways board.legal_moves doesn't recognize at all. Usually that's fine (a
+    hero piece's PLAIN mode is a real python-chess move it can still find),
+    but if the position's ONLY legal move for this color is one of these
+    hero-special ones - most commonly because it's the only way to escape a
+    check delivered by a hero-special move in the first place, which
+    board.is_check() can't see either - custom_ai_move's retry loop can
+    exhaust every standard move Stockfish tries without ever finding it,
+    even though _side_has_a_real_move (checkmate detection's source of
+    truth) already knows one exists.
+
+    This is that fallback: the exact same search _side_has_a_real_move
+    does, except returning the move it finds (as (from, to, is_shoot))
+    instead of just a bool, so custom_ai_move can play it directly.
+    Deliberately a separate function rather than reusing
+    _side_has_a_real_move's own bool-only helpers - keeps that
+    already-tested checkmate-detection code untouched.
+    """
+    board = game.board
+
+    dragon_square = game.white_dragon_square if color == chess.WHITE else game.black_dragon_square
+    if dragon_square is not None:
+        piece = board.piece_at(dragon_square)
+        if piece is not None and piece.piece_type == chess.ROOK:
+            for dest in rules.offset_squares(dragon_square, rules.KNIGHT_SHAPE_OFFSETS):
+                target = board.piece_at(dest)
+                if target is not None and target.color == color:
+                    continue
+                if _move_keeps_king_safe(game, chess.Move(dragon_square, dest), color):
+                    return dragon_square, dest, False
+
+    wizard_squares = game.white_wizard_squares if color == chess.WHITE else game.black_wizard_squares
+    for wizard_square in wizard_squares:
+        piece = board.piece_at(wizard_square)
+        if piece is None or piece.piece_type != chess.BISHOP:
+            continue
+        for dest in rules.offset_squares(wizard_square, rules.KING_STEP_OFFSETS):
+            target = board.piece_at(dest)
+            if target is not None and target.color == color:
+                continue
+            if _move_keeps_king_safe(game, chess.Move(wizard_square, dest), color):
+                return wizard_square, dest, False
+
+    hydra_squares = game.white_hydra_squares if color == chess.WHITE else game.black_hydra_squares
+    for hydra_square in hydra_squares:
+        piece = board.piece_at(hydra_square)
+        if piece is None or piece.piece_type != chess.KNIGHT:
+            continue
+        ring = rules.KNIGHT_SHAPE_OFFSETS + rules.HYDRA_RING_EXTRA_OFFSETS
+        for dest in rules.offset_squares(hydra_square, ring):
+            target = board.piece_at(dest)
+            if target is not None and target.color == color:
+                continue
+            if _move_keeps_king_safe(game, chess.Move(hydra_square, dest), color):
+                return hydra_square, dest, False
+
+    archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
+    for archer_square in archer_squares:
+        for dest in rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS):
+            target = board.piece_at(dest)
+            if target is not None and target.color == color:
+                continue
+            if _move_keeps_king_safe(game, chess.Move(archer_square, dest), color):
+                return archer_square, dest, False
+        for dest in rules.offset_squares(archer_square, rules.KNIGHT_SHAPE_OFFSETS):
+            target = board.piece_at(dest)
+            if target is None or target.color == color or target.piece_type == chess.KING:
+                continue
+            if _shoot_keeps_king_safe(game, archer_square, dest, color):
+                return archer_square, dest, True
+
+    cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
+    for cyclops_square in cyclops_squares:
+        dest = rules.cyclops_special_capture_square(cyclops_square, color)
+        if dest is None:
+            continue
+        target = board.piece_at(dest)
+        if target is None or target.color == color or target.piece_type == chess.KING:
+            continue
+        if _move_keeps_king_safe(game, chess.Move(cyclops_square, dest), color):
+            return cyclops_square, dest, False
+
+    mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
+    mimic_type = _mirror_current_mimic_type(game, color)
+    if mimic_type is not None:
+        for mirror_square in mirror_squares:
+            for dest in _mirror_candidate_destinations(board, mirror_square, mimic_type):
+                target = board.piece_at(dest)
+                if target is not None and target.color == color:
+                    continue
+                if _move_keeps_king_safe(game, chess.Move(mirror_square, dest), color):
+                    return mirror_square, dest, False
+
+    return None
+
+
 def _compute_status(game: store.CustomGame) -> str:
     board = game.board
 
@@ -941,7 +1039,14 @@ def custom_ai_move(game_id: str):
     excluded_moves: set[chess.Move] = set()
     log_entry: Optional[str] = None
     for _ in range(len(list(board.legal_moves)) + 1):
-        ai_move = ai.compute_ai_move(board, excluded_moves=excluded_moves)
+        try:
+            ai_move = ai.compute_ai_move(board, excluded_moves=excluded_moves)
+        except RuntimeError:
+            # Every standard move is now excluded - the only escape left
+            # (if any) is a hero-special one Stockfish could never have
+            # proposed in the first place. Stop retrying standard moves and
+            # fall through to the search below instead of crashing here.
+            break
         ai_from, ai_to = ai_move.from_square, ai_move.to_square
         try:
             log_entry = _apply_move(
@@ -957,6 +1062,25 @@ def custom_ai_move(game_id: str):
             break
         except rules.IllegalMoveError:
             excluded_moves.add(ai_move)
+
+    if log_entry is None:
+        # No STANDARD move worked - the AI's only way out is a hero-special
+        # move of its own (see _find_hero_special_move's docstring for
+        # exactly why this can happen even though _compute_status already
+        # guaranteed some legal move exists).
+        hero_move = _find_hero_special_move(game, chess.BLACK)
+        if hero_move is not None:
+            hero_from, hero_to, hero_shoot = hero_move
+            log_entry = _apply_move(
+                game,
+                chess.BLACK,
+                hero_from,
+                hero_to,
+                shoot=hero_shoot,
+                from_square_str=chess.square_name(hero_from),
+                to_square_str=chess.square_name(hero_to),
+                promotion=None,
+            )
 
     if log_entry is None:
         raise HTTPException(500, "AI could not find a legal move")
