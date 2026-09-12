@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
-import { computeLegalDestinations, tryOptimisticFen } from "./legalMoves";
+import { computeLegalDestinations, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
@@ -111,7 +111,10 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     });
     if (optimisticFen) {
       appliedOptimistic = true;
-      setGameState((prev) => ({ ...prev, fen: optimisticFen }));
+      // A shoot never relocates the Archer itself - only the FEN (already
+      // updated above) changes, from the target square losing its piece.
+      const trackingPatch = shoot ? {} : relocateHeroTrackingSquares(gameState, sourceSquare, targetSquare);
+      setGameState((prev) => ({ ...prev, fen: optimisticFen, ...trackingPatch }));
     }
 
     setMoving(true);

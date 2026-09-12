@@ -17,6 +17,46 @@ import { Chess } from "chess.js";
 // server still authoritatively rejects an unsafe move on drop either way -
 // this is a hint overlay, not the rule enforcement.
 
+// Which square is currently a Dragon/Wizard/Archer/Hydra/Cyclops/Mirror
+// lives in its own separate gameState fields, not the FEN - that's how a
+// Dragon's art (say) differs from a plain Rook sitting on the same square.
+// The optimistic FEN preview above moves the piece's *position* instantly,
+// but doesn't touch these on its own, which left the piece rendering as
+// its plain base type (a Rook, a Knight, ...) for the instant between the
+// optimistic preview landing and the real response arriving, since art
+// selection keys off these squares matching, not the FEN. This relocates
+// whichever one of them held `from` over to `to`, mirroring the FEN move
+// that just happened. Never call this for an Archer's shoot - the archer
+// itself doesn't move, and `from` there is the archer's own square (which
+// this would incorrectly "relocate" onto the shot's target square).
+const HERO_SQUARE_ARRAY_FIELDS = [
+  "white_wizard_squares",
+  "black_wizard_squares",
+  "white_archer_squares",
+  "black_archer_squares",
+  "white_hydra_squares",
+  "black_hydra_squares",
+  "white_cyclops_squares",
+  "black_cyclops_squares",
+  "white_mirror_squares",
+  "black_mirror_squares",
+];
+const HERO_SQUARE_SINGLE_FIELDS = ["white_dragon_square", "black_dragon_square"];
+
+export function relocateHeroTrackingSquares(gameState, from, to) {
+  const patch = {};
+  for (const field of HERO_SQUARE_SINGLE_FIELDS) {
+    if (gameState[field] === from) patch[field] = to;
+  }
+  for (const field of HERO_SQUARE_ARRAY_FIELDS) {
+    const list = gameState[field];
+    if (list && list.includes(from)) {
+      patch[field] = list.map((square) => (square === from ? to : square));
+    }
+  }
+  return patch;
+}
+
 const KING_STEP_OFFSETS = [
   [-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1],
 ];
