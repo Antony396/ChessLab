@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useEquippedSkin, setEquippedSkin } from "../skinStore";
+import { playHopSound } from "../sound";
 
 // The room's tile grid - an enclosed space, Club Penguin-igloo scale rather
 // than an open world, but sized to actually fill most of the screen.
@@ -111,6 +112,7 @@ export function useHubState() {
       });
       setFacing(direction);
       if (!moved) return; // walked into a wall/prop - no hop, no cooldown
+      playHopSound();
       busyRef.current = true;
       setIsHopping(true);
       window.setTimeout(() => {
@@ -159,6 +161,7 @@ export function useHubState() {
             return prev;
           }
           setFacing(direction);
+          playHopSound();
           busyRef.current = true;
           setIsHopping(true);
           return next;

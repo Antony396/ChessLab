@@ -4,6 +4,7 @@ import { onlineGameWsUrl, postOnlineMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { computeLegalDestinations, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
+import { playMoveSound } from "./sound";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -53,6 +54,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   // since Render's free tier can recycle idle connections.
   const gameId = gameState.id;
   const reconnectTimer = useRef(null);
+  // Set right when I fire off my own move (after already playing its sound
+  // instantly - see handlePieceDrop), so the broadcast that confirms it
+  // moments later doesn't play a second sound for the same move. Anything
+  // else that grows the action log - the opponent's move, or a puzzle-free
+  // reconnect landing on an already-current state - falls through to the
+  // length check below instead.
+  const pendingOwnMoveRef = useRef(false);
 
   useEffect(() => {
     let socket;
@@ -63,7 +71,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       socket.onopen = () => setConnected(true);
       socket.onmessage = (event) => {
         try {
-          setGameState(JSON.parse(event.data));
+          const next = JSON.parse(event.data);
+          setGameState((prev) => {
+            const isNewMove = next.action_log.length > prev.action_log.length;
+            if (isNewMove && !pendingOwnMoveRef.current) playMoveSound();
+            pendingOwnMoveRef.current = false;
+            return next;
+          });
         } catch {
           // ignore malformed frames
         }
@@ -147,6 +161,8 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     const previousGameState = gameState;
     let appliedOptimistic = false;
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
+      isDragonSquare: sourceSquare === myDragonSquare,
+      isWizardSquare: myWizardSquares.includes(sourceSquare),
       isHydraSquare: myHydraSquares.includes(sourceSquare),
       isCyclopsSquare: myCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: myMirrorSquares.includes(sourceSquare),
@@ -161,6 +177,9 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       setGameState((prev) => ({ ...prev, fen: optimisticFen, ...trackingPatch }));
     }
 
+    playMoveSound();
+    pendingOwnMoveRef.current = true;
+
     setMoving(true);
     setError(null);
     postOnlineMove({
@@ -172,6 +191,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     })
       .then(() => setShootArmed(false))
       .catch((e) => {
+        pendingOwnMoveRef.current = false; // never landed - don't suppress the next real broadcast
         setError(e.message);
         if (appliedOptimistic) setGameState(previousGameState);
       })

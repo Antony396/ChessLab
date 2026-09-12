@@ -143,16 +143,26 @@ function applyNonRelocatingCapture(fen, targetSquare) {
 // Tries a plain chess.js move first, since that correctly handles every
 // normal move (including a hero piece's own "plain" mode - the FEN only
 // ever encodes the base type it's stored as). If that's not legal, and the
-// caller says this square is a Hydra/Cyclops/Mirror/Archer, checks whether
-// `to` is actually one of THAT piece's own hero-special destinations
-// (reusing the exact same candidate logic computeLegalDestinations uses)
-// before applying it by hand - so a genuinely illegal drop still correctly
-// returns null and waits for the server to reject it, same as before.
+// caller says this square is a Dragon/Wizard/Hydra/Cyclops/Mirror/Archer,
+// checks whether `to` is actually one of THAT piece's own hero-special
+// destinations (reusing the exact same candidate logic
+// computeLegalDestinations uses) before applying it by hand - so a
+// genuinely illegal drop still correctly returns null and waits for the
+// server to reject it, same as before.
 export function tryOptimisticFen(
   fen,
   from,
   to,
-  { promotion = "q", isHydraSquare, isCyclopsSquare, isMirrorSquare, mirrorMimicType, shoot } = {}
+  {
+    promotion = "q",
+    isDragonSquare,
+    isWizardSquare,
+    isHydraSquare,
+    isCyclopsSquare,
+    isMirrorSquare,
+    mirrorMimicType,
+    shoot,
+  } = {}
 ) {
   if (shoot) return applyNonRelocatingCapture(fen, to);
 
@@ -174,6 +184,12 @@ export function tryOptimisticFen(
   const mover = chess.get(from);
   if (!mover) return null;
 
+  if (isDragonSquare && knightShapeDestinations(chess, from, { requireEnemy: false }).includes(to)) {
+    return applyRelocateAndCapture(fen, from, to);
+  }
+  if (isWizardSquare && kingStepDestinations(chess, from).includes(to)) {
+    return applyRelocateAndCapture(fen, from, to);
+  }
   if (isHydraSquare && hydraRingExtraDestinations(chess, from).includes(to)) {
     return applyRelocateAndCapture(fen, from, to);
   }

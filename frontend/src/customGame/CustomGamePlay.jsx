@@ -4,6 +4,7 @@ import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { computeLegalDestinations, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
+import { playMoveSound } from "./sound";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -103,6 +104,8 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     const previousGameState = gameState;
     let appliedOptimistic = false;
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
+      isDragonSquare: sourceSquare === gameState.white_dragon_square,
+      isWizardSquare: whiteWizardSquares.includes(sourceSquare),
       isHydraSquare: whiteHydraSquares.includes(sourceSquare),
       isCyclopsSquare: whiteCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: whiteMirrorSquares.includes(sourceSquare),
@@ -117,6 +120,8 @@ export default function CustomGamePlay({ initialGame, onExit }) {
       setGameState((prev) => ({ ...prev, fen: optimisticFen, ...trackingPatch }));
     }
 
+    playMoveSound();
+
     setMoving(true);
     setError(null);
     postCustomMove({
@@ -130,7 +135,10 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         setShootArmed(false);
         if (afterPlayerMove.vs_ai && afterPlayerMove.status === "in_progress" && afterPlayerMove.turn === "black") {
           setAiThinking(true);
-          return postAiMove(afterPlayerMove.id).then((afterAiMove) => setGameState(afterAiMove));
+          return postAiMove(afterPlayerMove.id).then((afterAiMove) => {
+            playMoveSound(); // the computer's own move, played once it actually lands
+            setGameState(afterAiMove);
+          });
         }
       })
       .catch((e) => {
