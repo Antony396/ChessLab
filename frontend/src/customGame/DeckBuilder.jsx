@@ -9,14 +9,17 @@ import {
   pieceImageSrc,
 } from "../pieces/flat2dPieces";
 import { postCustomSetup, postOnlineCreate, postOnlineRoomJoin } from "./api";
+import { KING_SKINS, useEquippedSkin } from "./skinStore";
+import { postChallenge } from "./social/api";
 
 const FILES = "abcdefgh";
 const KING_HOME_INDEX = 4; // e-file, the King's regular starting square
 const DRAFTABLE_PIECES = PALETTE_PIECES.filter((letter) => letter !== "K");
 
-// Locked out of deck-building for now - leave the card visible so a later
-// build can unlock it without re-adding it from scratch.
-const LOCKED_PIECES = new Set(["A"]);
+// Nothing locked right now - kept as a set (rather than deleted outright)
+// so a piece can be pulled out of rotation again without re-adding the
+// locking machinery from scratch.
+const LOCKED_PIECES = new Set();
 
 // White's back rank is always rank 1; joining as black (see `joinMode`
 // below) drafts onto rank 8 instead - same board, same slots, just the
@@ -48,6 +51,14 @@ function XIcon() {
   );
 }
 
+function CrownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none">
+      <path d="M4 18h16l1-9-5 3-4-6-4 6-5-3 1 9z" />
+    </svg>
+  );
+}
+
 function QuestionIcon() {
   return (
     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -68,43 +79,56 @@ function PawnSquare({ dark }) {
   );
 }
 
-function DeckSlot({ letter, dark, isEvolution, isKing, onClick, onDragStart, onDragOver, onDrop }) {
+function DeckSlot({ letter, file, dark, isEvolution, isKing, isDragTarget, kingSkinSrc, onClick, onDragStart, onDragEnd, onDragOver, onDrop }) {
   const isDragon = isEvolution && letter === "N";
   const isWizard = isEvolution && letter === "B";
   const evolvedCost = isDragon ? DRAGON_COST : isWizard ? WIZARD_COST : null;
   const cost = letter ? evolvedCost ?? POINT_COSTS[letter] ?? 0 : null;
   const label = letter ? (isDragon ? "Dragon" : isWizard ? "Wizard" : PIECE_LABELS[letter]) : "";
   const imageKey = isDragon ? "wD" : isWizard ? "wW" : `w${letter}`;
+  // The King's slot always shows whatever skin is currently equipped (see
+  // customGame/skinStore.js) - kept in sync with the hub avatar and the
+  // actual game board.
+  const imageSrc = isKing && kingSkinSrc ? kingSkinSrc : pieceImageSrc(imageKey);
 
   return (
     <button
       type="button"
-      className={`chess-square deck-slot${dark ? " dark" : " light"}${isEvolution ? " evolution" : ""}${letter ? " filled" : ""}`}
+      className={`chess-square deck-slot${dark ? " dark" : " light"}${isEvolution ? " evolution" : ""}${letter ? " filled" : ""}${isKing ? " king" : ""}${isDragTarget ? " drag-target" : ""}`}
       onClick={onClick}
       draggable={Boolean(letter)}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
+      <span className="file-watermark">{file}</span>
       {isEvolution && <span className="evolution-ribbon">EVO</span>}
       {isKing && (
-        <span className="lock-badge" title="Always exactly one King - drag to reposition">
-          <LockIcon />
+        <span className="lock-badge king-badge" title="Always exactly one King - drag to reposition">
+          <CrownIcon />
         </span>
       )}
       {letter ? (
-        <img src={pieceImageSrc(imageKey)} alt={label} className="deck-slot-img" />
+        <img src={imageSrc} alt={label} className="deck-slot-img" />
       ) : (
         <span className="deck-slot-placeholder">+</span>
       )}
-      {label && <span className="deck-slot-label">{label}</span>}
-      {cost !== null && <span className="deck-slot-cost">{cost}</span>}
+      {label && (
+        <span className="card-name-row">
+          <span className="deck-slot-label">{label}</span>
+          {cost !== null && <span className="cost-badge">{cost}</span>}
+        </span>
+      )}
     </button>
   );
 }
 
 const EVOLUTION_ART = { N: "wD", B: "wW" };
 const EVOLUTION_NAME = { N: "Dragon", B: "Wizard" };
+// Short text for the palette card's corner badge - a Bishop evolution
+// crafts 2 Wizards at once, a Knight evolution crafts 1 Dragon.
+const EVOLUTION_BADGE_LABEL = { N: "EVO", B: "2× EVO" };
 
 // --- Small per-piece movement demos -------------------------------------
 // A compact grid centered on the piece, with dots marking every square it
@@ -129,21 +153,42 @@ function slidingOffsets(dirs) {
   return offsets;
 }
 
+// A Cyclops's one EXTRA special-capture square (two diagonally
+// forward-left) - on top of, not instead of, a real Pawn's plain
+// one-square diagonal capture in both directions.
+const CYCLOPS_CAPTURE_OFFSET = [[-2, 2]];
+
+// The other 8 squares at Chebyshev distance 2 (straight or diagonal, two
+// out) - together with KNIGHT_OFFSETS these form the Hydra's full ring. It
+// never moves just one square, unlike a King.
+const HYDRA_RING_EXTRA_OFFSETS = [
+  [-2, -2], [-2, 0], [-2, 2], [0, -2], [0, 2], [2, -2], [2, 0], [2, 2],
+];
+
 const DEMO_MOVE_OFFSETS = {
   Q: [...slidingOffsets(ROOK_DIRS), ...slidingOffsets(BISHOP_DIRS)],
   R: slidingOffsets(ROOK_DIRS),
   B: slidingOffsets(BISHOP_DIRS),
   N: KNIGHT_OFFSETS,
   A: KING_STEP_OFFSETS,
+  H: [...KNIGHT_OFFSETS, ...HYDRA_RING_EXTRA_OFFSETS],
+  C: [[0, 1], [0, 2]],
   P: [[0, 1], [0, 2]],
 };
-const DEMO_SHOOT_OFFSETS = { A: KNIGHT_OFFSETS, P: [[-1, 1], [1, 1]] };
+const DEMO_SHOOT_OFFSETS = {
+  A: KNIGHT_OFFSETS,
+  C: [[-1, 1], [1, 1], ...CYCLOPS_CAPTURE_OFFSET],
+  P: [[-1, 1], [1, 1]],
+};
 const DEMO_CAPTIONS = {
   Q: "Moves any distance in a straight line or diagonal.",
   R: "Moves any distance in a straight line.",
   B: "Moves any distance diagonally.",
   N: "Jumps in an L-shape, over other pieces.",
   A: "Moves one square any direction (dots), or shoots a piece a knight's-move away without moving (rings).",
+  H: "Jumps to any square exactly two squares away - straight, diagonal, or a knight's L-shape - forming a full ring around it. It can never move just one square, unlike a King.",
+  C: "Moves forward like a Pawn (dots) and captures diagonally like one too (near rings) - plus one extra trick: a two-square hop diagonally to its own left (far ring).",
+  M: "Has no moves of its own - it moves exactly like whatever piece your opponent moved last. If they move a Knight, your Mirror can move like a Knight on your next turn. Before they've moved anything, it can't move yet.",
   P: "Moves forward (dots, two squares from its own start), captures diagonally (rings). On the back rank it starts blocked by the pawn ahead of it, until that one's gone.",
 };
 
@@ -292,15 +337,20 @@ function EvoSlotDragDemo() {
   );
 }
 
-function PaletteCard({ letter, locked, expanded, onDragStart, onToggleDemo }) {
+function PaletteCard({ letter, locked, expanded, onDragStart, onDragEnd, onToggleDemo }) {
   const evolvesInto = EVOLUTION_ART[letter];
+  const tooltip = locked
+    ? "Locked for now"
+    : `${PIECE_LABELS[letter]}: ${DEMO_CAPTIONS[letter] || `Costs ${POINT_COSTS[letter]} points.`}`;
   return (
     <div
       className={`palette-card${locked ? " locked" : ""}${expanded ? " expanded" : ""}`}
       draggable={!locked}
       onDragStart={locked ? undefined : onDragStart}
-      title={locked ? "Locked for now" : undefined}
+      onDragEnd={locked ? undefined : onDragEnd}
+      title={tooltip}
     >
+      <span className="cost-badge palette-card-cost-badge">{POINT_COSTS[letter]}</span>
       {locked ? (
         <span className="lock-badge" title="Locked for now">
           <LockIcon />
@@ -308,8 +358,7 @@ function PaletteCard({ letter, locked, expanded, onDragStart, onToggleDemo }) {
       ) : (
         evolvesInto && (
           <span className="evo-badge" title={`Drag onto the Evo Slot to craft a ${EVOLUTION_NAME[letter]}`}>
-            <img src={pieceImageSrc(evolvesInto)} alt="" className="evo-badge-icon" />
-            <span className="evo-badge-text">EVO</span>
+            <span className="evo-badge-text">{EVOLUTION_BADGE_LABEL[letter]}</span>
           </span>
         )
       )}
@@ -321,14 +370,15 @@ function PaletteCard({ letter, locked, expanded, onDragStart, onToggleDemo }) {
       >
         <QuestionIcon />
       </button>
-      <img src={pieceImageSrc(`w${letter}`)} alt={PIECE_LABELS[letter]} className="palette-card-img" />
+      <span className="palette-card-icon">
+        <img src={pieceImageSrc(`w${letter}`)} alt={PIECE_LABELS[letter]} className="palette-card-img" />
+      </span>
       <span className="palette-card-label">{PIECE_LABELS[letter]}</span>
-      <span className="palette-card-cost">{POINT_COSTS[letter]}</span>
     </div>
   );
 }
 
-function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPiece, onReset }) {
+function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPiece, onDragEndPiece, onReset }) {
   const [showDemo, setShowDemo] = useState(false);
   const depleted = evoSlotType !== null && remaining === 0;
   const pieceArt = evoSlotType === "N" ? "wD" : "wW";
@@ -362,7 +412,9 @@ function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPie
 
       {!evoSlotType ? (
         <div className="evo-orb-box-empty">
+          <span className="evo-socket-ring" aria-hidden="true" />
           <span className="deck-slot-placeholder">+</span>
+          <p className="evo-socket-hint">Drag an EVO-eligible piece here</p>
         </div>
       ) : (
         <div className={`evo-slot-content${depleted ? " depleted" : ""}`}>
@@ -381,6 +433,7 @@ function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPie
             className="evo-slot-piece-img"
             draggable={remaining > 0}
             onDragStart={remaining > 0 ? onDragStartPiece : undefined}
+            onDragEnd={remaining > 0 ? onDragEndPiece : undefined}
             onClick={() => setShowDemo((v) => !v)}
             title={
               (remaining > 0 ? `Drag your ${pieceName} onto an open deck square. ` : `All ${pieceName}s placed. `) +
@@ -394,8 +447,24 @@ function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPie
   );
 }
 
-export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMode, roomId, onOnlineDeckSubmitted }) {
+export default function DeckBuilder({
+  onGameStarted,
+  onOnlineGameCreated,
+  joinMode,
+  roomId,
+  onOnlineDeckSubmitted,
+  challengeTarget,
+  authToken,
+}) {
   const rank = joinMode ? "8" : "1";
+  // Kept in sync with the hub avatar and the actual game board (see
+  // customGame/skinStore.js) - equip a skin once, see it everywhere.
+  const equippedSkin = useEquippedSkin();
+  // The deck builder always shows pieces in their White coloring by
+  // convention (every other piece here is drawn from the "w"-prefixed set
+  // regardless of which side you're actually drafting for), so the King's
+  // slot uses the skin's White-team variant too.
+  const kingSkinSrc = KING_SKINS[equippedSkin].whiteTeamSrc;
   const [deck, setDeck] = useState(() => {
     const initial = Array(8).fill(null);
     initial[KING_HOME_INDEX] = "K";
@@ -412,6 +481,9 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
   // can be started.
   const [evoSlotType, setEvoSlotType] = useState(null);
   const [expandedDemo, setExpandedDemo] = useState(null);
+  // True while a card is actively being dragged (from the palette or the
+  // Evo Slot) - highlights open deck slots as valid drop targets.
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(false);
 
@@ -505,6 +577,7 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
   }
 
   function handleEvoSlotDragStartPiece(e) {
+    setIsDragging(true);
     e.dataTransfer.setData("application/json", JSON.stringify({ source: "evoSlot", letter: evoSlotType }));
   }
 
@@ -586,6 +659,24 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
     }
   }
 
+  async function handleChallenge() {
+    setError(null);
+    setStarting(true);
+    try {
+      const payload = {
+        to_user_id: challengeTarget.id,
+        white_back_rank: buildBackRank(),
+        white_evolved_squares: buildEvolvedSquares(),
+      };
+      const result = await postChallenge(authToken, payload);
+      onOnlineGameCreated(result);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setStarting(false);
+    }
+  }
+
   async function handleJoin() {
     setError(null);
     setStarting(true);
@@ -603,16 +694,20 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
     }
   }
 
+  const pointsPct = Math.min(100, Math.round((points / MAX_DECK_POINTS) * 100));
+
+  const atFullBudget = points === MAX_DECK_POINTS;
+
   return (
     <div className="deck-builder">
-      <p className="deck-hint">
-        {joinMode
-          ? `Build your deck (up to ${MAX_DECK_POINTS} points), then join the match.`
-          : `Build a deck of up to ${MAX_DECK_POINTS} points, then play a match against the computer.`}
-      </p>
-
-      <div className={`points-bar${overBudget ? " over" : ""}`}>
-        Points: <strong>{points}</strong> / {MAX_DECK_POINTS}
+      <div className={`points-bar${overBudget ? " over" : ""}${atFullBudget ? " full" : ""}`}>
+        <span className="points-bar-label">Deck Budget</span>
+        <div className="points-bar-track">
+          <div className="points-bar-fill" style={{ width: `${pointsPct}%` }} />
+        </div>
+        <span className="points-bar-value">
+          <strong>{points}</strong> / {MAX_DECK_POINTS} PTS
+        </span>
       </div>
 
       <div className="chess-deck-board">
@@ -623,38 +718,51 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
           <DeckSlot
             key={i}
             letter={letter}
+            file={FILES[i]}
             dark={isDarkSquare(i, 0)}
             isEvolution={effectiveEvolvedIndices.has(i)}
             isKing={letter === "K"}
+            kingSkinSrc={kingSkinSrc}
+            isDragTarget={isDragging && !letter}
             onClick={() => handleSlotClick(i)}
-            onDragStart={(e) => e.dataTransfer.setData("application/json", JSON.stringify({ source: "deck", index: i }))}
+            onDragStart={(e) => {
+              setIsDragging(true);
+              e.dataTransfer.setData("application/json", JSON.stringify({ source: "deck", index: i }));
+            }}
+            onDragEnd={() => setIsDragging(false)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleDropOnSlot(e, i)}
           />
         ))}
       </div>
-      <div className="chess-deck-files">
-        {FILES.split("").map((f) => (
-          <span key={f}>{f}</span>
-        ))}
-      </div>
 
-      <p className="deck-hint">
-        Drag a card into a deck slot. Click a filled slot to clear it. Click the <strong>?</strong> on a card for a
-        demo.
-      </p>
+      <div className="deck-builder-main">
+        <div className="palette-row">
+          {DRAFTABLE_PIECES.map((letter) => (
+            <PaletteCard
+              key={letter}
+              letter={letter}
+              locked={LOCKED_PIECES.has(letter)}
+              expanded={expandedDemo === letter}
+              onDragStart={(e) => {
+                setIsDragging(true);
+                e.dataTransfer.setData("application/json", JSON.stringify({ source: "palette", letter }));
+              }}
+              onDragEnd={() => setIsDragging(false)}
+              onToggleDemo={() => setExpandedDemo((prev) => (prev === letter ? null : letter))}
+            />
+          ))}
+        </div>
 
-      <div className="palette-row">
-        {DRAFTABLE_PIECES.map((letter) => (
-          <PaletteCard
-            key={letter}
-            letter={letter}
-            locked={LOCKED_PIECES.has(letter)}
-            expanded={expandedDemo === letter}
-            onDragStart={(e) => e.dataTransfer.setData("application/json", JSON.stringify({ source: "palette", letter }))}
-            onToggleDemo={() => setExpandedDemo((prev) => (prev === letter ? null : letter))}
-          />
-        ))}
+        <EvoSlotBox
+          evoSlotType={evoSlotType}
+          remaining={evoSlotRemaining}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleEvoSlotDrop}
+          onDragStartPiece={handleEvoSlotDragStartPiece}
+          onDragEndPiece={() => setIsDragging(false)}
+          onReset={handleEvoSlotReset}
+        />
       </div>
 
       {expandedDemo && (
@@ -683,6 +791,19 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
           <button type="button" className="start-game-btn online" disabled={starting || overBudget || kingCount !== 1} onClick={handleJoin}>
             {starting ? "Joining…" : kingCount !== 1 ? "Place exactly one King" : "Join Game"}
           </button>
+        ) : challengeTarget ? (
+          <button
+            type="button"
+            className="start-game-btn online"
+            disabled={starting || overBudget || kingCount !== 1}
+            onClick={handleChallenge}
+          >
+            {starting
+              ? "Sending…"
+              : kingCount !== 1
+                ? "Place exactly one King"
+                : `Send Challenge to ${challengeTarget.username}`}
+          </button>
         ) : (
           <>
             <button
@@ -706,14 +827,15 @@ export default function DeckBuilder({ onGameStarted, onOnlineGameCreated, joinMo
         )}
       </div>
 
-      <EvoSlotBox
-        evoSlotType={evoSlotType}
-        remaining={evoSlotRemaining}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleEvoSlotDrop}
-        onDragStartPiece={handleEvoSlotDragStartPiece}
-        onReset={handleEvoSlotReset}
-      />
+      <p className="deck-hint">
+        {joinMode
+          ? `Build your deck (up to ${MAX_DECK_POINTS} points), then join the match. `
+          : challengeTarget
+            ? `Build a deck of up to ${MAX_DECK_POINTS} points, then challenge ${challengeTarget.username} directly - no code needed. `
+            : `Build a deck of up to ${MAX_DECK_POINTS} points, then play a match against the computer. `}
+        Drag a card into a deck slot. Click a filled slot to clear it. Click <strong>?</strong> on a card for a
+        demo.
+      </p>
     </div>
   );
 }

@@ -46,6 +46,20 @@ class CustomGameState(BaseModel):
     # Current squares of each side's Archers (there can be several).
     white_archer_squares: list[str] = []
     black_archer_squares: list[str] = []
+    # Current squares of each side's Hydras/Cyclopses/Mirrors (each can have
+    # several, drafted directly like the Archer).
+    white_hydra_squares: list[str] = []
+    black_hydra_squares: list[str] = []
+    white_cyclops_squares: list[str] = []
+    black_cyclops_squares: list[str] = []
+    white_mirror_squares: list[str] = []
+    black_mirror_squares: list[str] = []
+    # The base piece letter (K/Q/R/B/N/P) each color most recently moved, or
+    # None if that color hasn't moved yet - what the OPPONENT's Mirror (if
+    # any) currently mimics. Exposed so the frontend can show correct legal-
+    # move hints for a Mirror square without duplicating the tracking logic.
+    white_last_moved_type: Optional[str] = None
+    black_last_moved_type: Optional[str] = None
     action_log: list[str]
 
 

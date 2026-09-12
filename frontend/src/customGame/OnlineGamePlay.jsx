@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { onlineGameWsUrl, postOnlineMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
+import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { computeLegalDestinations } from "./legalMoves";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
@@ -25,12 +26,25 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const [selectedSquare, setSelectedSquare] = useState(null);
 
   const myPrefix = myColor === "white" ? "w" : "b";
+  // Only my own King wears my equipped skin - the opponent's equipped skin
+  // isn't synced over the wire, so their King just stays the classic art.
+  // Which image depends on which side I actually am: White gets the skin's
+  // recolored-to-white variant, Black gets its normal look (see
+  // skinStore.js).
+  const equippedSkin = useEquippedSkin();
+  const myKingSkinSrc = myColor === "white" ? KING_SKINS[equippedSkin].whiteTeamSrc : KING_SKINS[equippedSkin].src;
   const isOver = gameState.status !== "in_progress";
   const isMyTurn = gameState.turn === myColor;
   const myArcherSquares = (myColor === "white" ? gameState.white_archer_squares : gameState.black_archer_squares) || [];
   const myWizardSquares = (myColor === "white" ? gameState.white_wizard_squares : gameState.black_wizard_squares) || [];
   const myDragonSquare = myColor === "white" ? gameState.white_dragon_square : gameState.black_dragon_square;
+  const myHydraSquares = (myColor === "white" ? gameState.white_hydra_squares : gameState.black_hydra_squares) || [];
+  const myCyclopsSquares = (myColor === "white" ? gameState.white_cyclops_squares : gameState.black_cyclops_squares) || [];
+  const myMirrorSquares = (myColor === "white" ? gameState.white_mirror_squares : gameState.black_mirror_squares) || [];
   const hasArchers = myArcherSquares.length > 0;
+  // My Mirror mimics whatever my OPPONENT last moved.
+  const opponentLastMovedType = myColor === "white" ? gameState.black_last_moved_type : gameState.white_last_moved_type;
+  const mirrorMimicType = opponentLastMovedType ? opponentLastMovedType.toLowerCase() : null;
 
   // Both players read every state update off the same broadcast, rather
   // than the mover trusting its own POST response and the opponent trusting
@@ -80,6 +94,10 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         isDragonSquare: square === myDragonSquare,
         isWizardSquare: myWizardSquares.includes(square),
         isArcherSquare,
+        isHydraSquare: myHydraSquares.includes(square),
+        isCyclopsSquare: myCyclopsSquares.includes(square),
+        isMirrorSquare: myMirrorSquares.includes(square),
+        mirrorMimicType,
         shootArmed: shootArmed && isArcherSquare,
       })
     );
@@ -147,6 +165,14 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         blackWizardSquares: gameState.black_wizard_squares,
         whiteArcherSquares: gameState.white_archer_squares,
         blackArcherSquares: gameState.black_archer_squares,
+        whiteHydraSquares: gameState.white_hydra_squares,
+        blackHydraSquares: gameState.black_hydra_squares,
+        whiteCyclopsSquares: gameState.white_cyclops_squares,
+        blackCyclopsSquares: gameState.black_cyclops_squares,
+        whiteMirrorSquares: gameState.white_mirror_squares,
+        blackMirrorSquares: gameState.black_mirror_squares,
+        whiteKingSkinSrc: myColor === "white" ? myKingSkinSrc : undefined,
+        blackKingSkinSrc: myColor === "black" ? myKingSkinSrc : undefined,
       }),
     [
       gameState.white_dragon_square,
@@ -155,6 +181,14 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       gameState.black_wizard_squares,
       gameState.white_archer_squares,
       gameState.black_archer_squares,
+      gameState.white_hydra_squares,
+      gameState.black_hydra_squares,
+      gameState.white_cyclops_squares,
+      gameState.black_cyclops_squares,
+      gameState.white_mirror_squares,
+      gameState.black_mirror_squares,
+      myColor,
+      myKingSkinSrc,
     ]
   );
 
@@ -179,7 +213,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     },
     onPieceDrop: handlePieceDrop,
     onSquareClick: handleSquareClick,
-    boardStyle: { borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" },
+    boardStyle: { borderRadius: "4px" },
     lightSquareStyle: { background: FLAT_2D_BOARD_COLORS.light },
     darkSquareStyle: { background: FLAT_2D_BOARD_COLORS.dark },
     squareStyles,
@@ -227,6 +261,15 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         </div>
         <div>
           <strong>Your Archers:</strong> {myArcherSquares.length > 0 ? myArcherSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Hydras:</strong> {myHydraSquares.length > 0 ? myHydraSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Cyclopses:</strong> {myCyclopsSquares.length > 0 ? myCyclopsSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Mirrors:</strong> {myMirrorSquares.length > 0 ? myMirrorSquares.join(", ") : "none in play"}
         </div>
         <div>
           <strong>Opponent:</strong> Human ({myColor === "white" ? "black" : "white"})

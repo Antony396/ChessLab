@@ -1,4 +1,6 @@
-"""Local SQLite cache: HTTP ETag cache, fetched games, and analysis results.
+"""Local SQLite cache: HTTP ETag cache, fetched games, analysis results, and
+(persistent, unlike everything in custom_chess/store.py) user accounts and
+friendships.
 
 One connection per thread (FastAPI's sync route handlers run in a thread
 pool), each opened lazily and reused for the life of that thread.
@@ -8,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,6 +56,22 @@ def init_db() -> None:
             analysis_json TEXT NOT NULL,
             generated_at TEXT NOT NULL,
             PRIMARY KEY (game_id, depth)
+        );
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            username_lower TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id TEXT PRIMARY KEY,
+            from_user_id TEXT NOT NULL,
+            to_user_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(from_user_id, to_user_id)
         );
         """
     )
@@ -129,3 +148,121 @@ def save_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
         (game_id, depth, analysis.model_dump_json(), analysis.generated_at),
     )
     conn.commit()
+
+
+# --- Users ---
+
+
+class UsernameTakenError(Exception):
+    pass
+
+
+def create_user(username: str, password_hash: str, password_salt: str) -> dict:
+    conn = get_conn()
+    user_id = uuid.uuid4().hex
+    created_at = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            "INSERT INTO users (id, username, username_lower, password_hash, password_salt, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, username, username.lower(), password_hash, password_salt, created_at),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise UsernameTakenError(username)
+    return {"id": user_id, "username": username, "created_at": created_at}
+
+
+def get_user_by_username(username: str) -> sqlite3.Row | None:
+    return get_conn().execute(
+        "SELECT * FROM users WHERE username_lower = ?", (username.lower(),)
+    ).fetchone()
+
+
+def get_user_by_id(user_id: str) -> sqlite3.Row | None:
+    return get_conn().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def search_users(query: str, exclude_user_id: str, limit: int = 10) -> list[sqlite3.Row]:
+    return get_conn().execute(
+        "SELECT id, username FROM users WHERE username_lower LIKE ? AND id != ? "
+        "ORDER BY username_lower LIMIT ?",
+        (f"{query.lower()}%", exclude_user_id, limit),
+    ).fetchall()
+
+
+# --- Friend requests / friendships ---
+# A friendship is just a friend_requests row with status='accepted' - no
+# separate "friendships" table, so there's one place (not two) that can ever
+# disagree about whether two users are friends.
+
+
+class FriendRequestExistsError(Exception):
+    pass
+
+
+def create_friend_request(from_user_id: str, to_user_id: str) -> str:
+    conn = get_conn()
+    request_id = uuid.uuid4().hex
+    try:
+        conn.execute(
+            "INSERT INTO friend_requests (id, from_user_id, to_user_id, status, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?)",
+            (request_id, from_user_id, to_user_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise FriendRequestExistsError((from_user_id, to_user_id))
+    return request_id
+
+
+def get_friend_request(request_id: str) -> sqlite3.Row | None:
+    return get_conn().execute("SELECT * FROM friend_requests WHERE id = ?", (request_id,)).fetchone()
+
+
+def get_friend_request_between(user_a: str, user_b: str) -> sqlite3.Row | None:
+    return get_conn().execute(
+        "SELECT * FROM friend_requests WHERE "
+        "(from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
+        (user_a, user_b, user_b, user_a),
+    ).fetchone()
+
+
+def set_friend_request_status(request_id: str, status: str) -> None:
+    conn = get_conn()
+    conn.execute("UPDATE friend_requests SET status = ? WHERE id = ?", (status, request_id))
+    conn.commit()
+
+
+def delete_friend_request(request_id: str) -> None:
+    conn = get_conn()
+    conn.execute("DELETE FROM friend_requests WHERE id = ?", (request_id,))
+    conn.commit()
+
+
+def list_incoming_requests(user_id: str) -> list[sqlite3.Row]:
+    return get_conn().execute(
+        "SELECT fr.id, fr.created_at, u.id AS from_user_id, u.username AS from_username "
+        "FROM friend_requests fr JOIN users u ON u.id = fr.from_user_id "
+        "WHERE fr.to_user_id = ? AND fr.status = 'pending' ORDER BY fr.created_at",
+        (user_id,),
+    ).fetchall()
+
+
+def list_friends(user_id: str) -> list[sqlite3.Row]:
+    return get_conn().execute(
+        "SELECT u.id, u.username FROM friend_requests fr "
+        "JOIN users u ON u.id = (CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END) "
+        "WHERE fr.status = 'accepted' AND (fr.from_user_id = ? OR fr.to_user_id = ?) "
+        "ORDER BY u.username_lower",
+        (user_id, user_id, user_id),
+    ).fetchall()
+
+
+def are_friends(user_a: str, user_b: str) -> bool:
+    row = get_conn().execute(
+        "SELECT 1 FROM friend_requests WHERE status = 'accepted' AND "
+        "((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))",
+        (user_a, user_b, user_b, user_a),
+    ).fetchone()
+    return row is not None

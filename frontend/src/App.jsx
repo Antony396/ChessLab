@@ -11,7 +11,8 @@ import { loadStoredTheme, storeTheme } from "./theme";
 import { formatEval } from "./utils/evalFormat";
 import { computePvArrows } from "./utils/pv";
 import HeroChessApp from "./customGame/HeroChessApp";
-import HomePage from "./HomePage";
+import AuthGate from "./customGame/social/AuthGate";
+import { useAuth } from "./customGame/social/authStore";
 import "./App.css";
 
 function buildPositions(analysis) {
@@ -63,6 +64,7 @@ function SubNav({ title, onHome }) {
 }
 
 export default function App() {
+  const auth = useAuth();
   const [games, setGames] = useState([]);
   const [selectedGame, setSelectedGame] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -72,10 +74,11 @@ export default function App() {
   const [error, setError] = useState(null);
   const [themeKey, setThemeKey] = useState(loadStoredTheme);
   const [showPath, setShowPath] = useState(false);
-  // A shared multiplayer link (?join=<gameId>) must land straight in Hero
-  // Chess, not the home screen, regardless of how someone opened it.
   const [joinGameId] = useState(() => new URLSearchParams(window.location.search).get("join"));
-  const [view, setView] = useState(() => (joinGameId ? "hero-chess" : "home")); // "home" | "analyzer" | "hero-chess"
+  // Evo Chess is the app's landing page now - there's no separate home
+  // screen to route through first. The Analyzer view still exists (see the
+  // fallback render below) for whenever it comes back into the nav.
+  const [view] = useState("evo-chess"); // "analyzer" | "evo-chess"
 
   function handleThemeChange(key) {
     setThemeKey(key);
@@ -130,22 +133,18 @@ export default function App() {
   const pathArrows =
     showPath && currentMove ? computePvArrows(currentMove.fen_before, currentMove.best_line_san) : [];
 
-  if (view === "home") {
-    return <HomePage onSelect={setView} />;
-  }
-
-  if (view === "hero-chess") {
+  if (view === "evo-chess") {
+    if (!auth) return <AuthGate />;
     return (
       <div className="app">
-        <SubNav title="Hero Chess" onHome={() => setView("home")} />
-        <HeroChessApp joinGameId={joinGameId} />
+        <HeroChessApp joinGameId={joinGameId} auth={auth} />
       </div>
     );
   }
 
   return (
     <div className="app">
-      <SubNav title="Game Analyzer" onHome={() => setView("home")} />
+      <SubNav title="Game Analyzer" />
 
       <SearchForm onSearch={handleSearch} loading={loadingGames} />
 

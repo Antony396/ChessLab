@@ -1,0 +1,685 @@
+/* The Dorm Room Hub - a painted round dorm room (frontend/public/hub/
+   dorm-room.jpg) with an invisible interactive layer on top: a plain
+   rectangular tile grid (see useHubState.js's isInsideRoom) restricted to
+   an inscribed ellipse so movement still reads as "inside a round room"
+   even though the tiles themselves are just a rectangle underneath. Uses
+   the same --hc-* tokens as the rest of the Evo Chess screen (defined on
+   .hero-chess-app), since this always renders inside it. */
+
+/* Break out of .hero-chess-app's 760px max-width so the room can actually
+   fill most of the screen. #root itself is a centered 1126px column (see
+   index.css), so this re-centers on the viewport (which coincides with
+   #root's own center) via transform rather than a raw -50vw margin, and
+   caps at #root's width so it never overshoots that column on wide
+   screens. */
+.hub-room-wrap {
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px 4px;
+  box-sizing: border-box;
+}
+
+/* The painted background is shown with `cover` so it fills the box
+   edge-to-edge with no letterbox bars (the box's aspect ratio is close
+   enough to the art's own that only the art's outer dark margin gets
+   trimmed, never any of the drawn room itself) - this also keeps the
+   pedestal (placed at the grid's left edge) landing inside the drawn
+   room rather than in a letterboxed gap beside it. */
+.hub-room {
+  position: relative;
+  overflow: hidden;
+  background-color: #12151f;
+  background-image: url("/hub/dorm-room.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 30px 70px -25px rgba(0, 0, 0, 0.75);
+  margin: 0 auto;
+}
+
+/* Everything tile-positioned (floor buttons, props, avatar) lives in here,
+   offset down from the room's own top edge by HEADROOM - see HubWorld.jsx -
+   so a standing sprite's head has room to overflow above row 0 without the
+   room's overflow:hidden clipping it. */
+.hub-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.hub-floor-tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.hub-floor-tile:hover {
+  background: rgba(245, 197, 66, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(245, 197, 66, 0.2);
+}
+
+/* --- Avatar ------------------------------------------------------- */
+
+.hub-avatar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: visible;
+  transition: transform 0.22s ease-out;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.hub-avatar-shadow {
+  position: absolute;
+  bottom: 4px;
+  width: 32px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  filter: blur(1px);
+  z-index: -1;
+}
+
+/* Taller than the tile itself, like a standing character sprite - anchored
+   to the bottom (its "feet") by the flex container above, with its head
+   overflowing above the tile rather than being squashed to fit inside it. */
+.hub-avatar-img {
+  position: relative;
+  width: 58px;
+  height: 96px;
+  object-fit: contain;
+  object-position: bottom;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.4));
+  transition: transform 0.15s ease;
+}
+
+/* Face left by mirroring the art - avoids needing separate directional
+   sprites for a single-image avatar. */
+.hub-avatar.facing-left .hub-avatar-img {
+  transform: scaleX(-1);
+}
+
+/* The hop: a quick up-and-down squash/stretch on the sprite itself, while
+   the outer .hub-avatar's transform (set inline, per-tile) glides the whole
+   thing to its new tile at the same time. */
+.hub-avatar.hopping .hub-avatar-img {
+  animation: hub-avatar-hop 0.22s ease-out;
+}
+
+@keyframes hub-avatar-hop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  35% {
+    transform: translateY(-18px) scale(0.92, 1.08);
+  }
+  70% {
+    transform: translateY(-3px) scale(1.05, 0.95);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+.hub-avatar.facing-left.hopping .hub-avatar-img {
+  animation-name: hub-avatar-hop-left;
+}
+
+@keyframes hub-avatar-hop-left {
+  0% {
+    transform: scaleX(-1) translateY(0) scale(1, 1);
+  }
+  35% {
+    transform: scaleX(-1) translateY(-18px) scale(0.92, 1.08);
+  }
+  70% {
+    transform: scaleX(-1) translateY(-3px) scale(1.05, 0.95);
+  }
+  100% {
+    transform: scaleX(-1) translateY(0) scale(1, 1);
+  }
+}
+
+/* A remote player's avatar (see social/usePresence.js) reuses .hub-avatar
+   entirely (including its glide transition, so a peer_move update slides
+   rather than snaps) - only a nameplate and a slightly dimmer look mark it
+   as someone else, not you. */
+.hub-avatar.remote .hub-avatar-img {
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.4)) brightness(0.92);
+}
+
+.hub-avatar-nameplate {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--hc-text-h);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* --- Visiting a friend's dorm ---------------------------------------- */
+
+.hub-visiting-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-gold);
+  background: rgba(245, 197, 66, 0.1);
+  color: var(--hc-text-h);
+  font-size: 13px;
+}
+
+.hub-visiting-banner strong {
+  color: var(--hc-gold);
+}
+
+.hub-visiting-banner button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--hc-gold);
+  color: #1c1400;
+  cursor: pointer;
+}
+
+/* --- Interactive props (the pedestal) ------------------------------- */
+
+.hub-trigger {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--hc-text-h);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.hub-trigger-glow {
+  position: absolute;
+  bottom: 6px;
+  width: 46px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(245, 197, 66, 0.18);
+  filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.hub-trigger.near .hub-trigger-glow {
+  opacity: 1;
+  animation: hub-trigger-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes hub-trigger-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+.hub-trigger-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, rgba(245, 197, 66, 0.18), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--hc-border-strong);
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.4));
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.hub-trigger:hover .hub-trigger-icon {
+  transform: translateY(-2px);
+}
+
+.hub-trigger.near .hub-trigger-icon {
+  border-color: var(--hc-gold);
+}
+
+.hub-trigger-label {
+  display: none;
+}
+
+.hub-trigger-prompt {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--hc-gold);
+  color: var(--hc-gold);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  z-index: 1;
+}
+
+/* The pedestal is a real piece of furniture, not an icon-in-a-box - its
+   own .hub-trigger-icon box is unset so PedestalProp's own layered shapes
+   (base slabs, column, glowing finial) take over the whole footprint,
+   taller than the tile it stands on (like the avatar, anchored at the
+   bottom and overflowing upward). */
+.hub-trigger-pedestal {
+  overflow: visible;
+}
+
+.hub-trigger-pedestal .hub-trigger-icon {
+  width: auto;
+  height: auto;
+  background: none;
+  border: none;
+  filter: none;
+}
+
+.hub-trigger-pedestal.near .hub-trigger-icon {
+  transform: none;
+}
+
+.pedestal-prop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 56px;
+}
+
+.pedestal-glow {
+  position: absolute;
+  bottom: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 197, 66, 0.35), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.hub-trigger-pedestal.near .pedestal-glow {
+  opacity: 1;
+}
+
+.pedestal-finial {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-bottom: -4px;
+  border-radius: 50%;
+  color: var(--hc-gold);
+  background: radial-gradient(circle, rgba(245, 197, 66, 0.3), transparent 75%);
+  filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.6));
+}
+
+.hub-trigger-pedestal.near .pedestal-finial {
+  animation: pedestal-finial-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes pedestal-finial-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(245, 197, 66, 0.95));
+  }
+}
+
+.pedestal-column {
+  width: 14px;
+  height: 30px;
+  background: linear-gradient(90deg, #4a5568 0%, #6b7690 45%, #4a5568 100%);
+  border: 1px solid #2d3748;
+  border-bottom: none;
+}
+
+.pedestal-base-slab {
+  border: 1px solid #2d3748;
+  background: linear-gradient(180deg, #6b7690 0%, #4a5568 60%, #384152 100%);
+}
+
+.pedestal-base-slab-1 {
+  width: 36px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.pedestal-base-slab-2 {
+  width: 50px;
+  height: 10px;
+  border-radius: 2px;
+  margin-top: -1px;
+}
+
+.hub-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--hc-text);
+  max-width: 460px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.hub-hint strong {
+  color: var(--hc-text-h);
+}
+
+/* --- Side panel: profile picture, skin picker, friends -------------- */
+
+/* Pinned to the actual browser viewport edge (not the room), so it reads
+   as a persistent part of the page itself rather than a control that
+   lives inside the hub room's own bounds. Rendered as a sibling of
+   .hub-room-wrap in HubWorld.jsx specifically so no transformed ancestor
+   turns this fixed positioning back into something relative. Everything
+   in it stacks via plain flex gap now, rather than each child guessing
+   the pixel offset of the one above it. */
+.hub-side-panel {
+  position: fixed;
+  top: 100px;
+  left: 18px;
+  z-index: 10;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hub-profile-badge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.hub-profile-badge {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--hc-gold);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.65);
+}
+
+/* headSrc (see skinStore.js) is already a pre-cropped, pre-centered square
+   image of just the skin's head, so a plain cover fit is all that's
+   needed here - no per-skin zoom guessing. */
+.hub-profile-badge-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hub-username-label {
+  max-width: 128px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Skin picker / Friends toggle ------------------------------------ */
+
+.hub-skin-picker {
+  position: relative;
+  width: 128px;
+  display: flex;
+  justify-content: center;
+}
+
+.hub-skin-toggle,
+.hub-friends-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hub-skin-toggle:hover,
+.hub-friends-toggle:hover {
+  border-color: var(--hc-gold);
+}
+
+.hub-skin-toggle-img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.hub-logout-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hub-logout-btn:hover {
+  border-color: var(--hc-danger);
+  color: var(--hc-danger);
+}
+
+.hub-skin-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-border-strong);
+  background: #14161c;
+  box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8);
+  min-width: 160px;
+}
+
+.hub-skin-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--hc-text-h);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hub-skin-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hub-skin-option.active {
+  border-color: var(--hc-gold);
+  color: var(--hc-gold);
+}
+
+.hub-skin-option-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* --- Station overlay (Deck Builder / Match Queue) ------------------ */
+
+.hub-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 6, 9, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 32px 16px;
+  z-index: 50;
+}
+
+.hub-overlay-panel {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  background: var(--hc-bg-edge, #0d1017);
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius);
+  padding: 44px 20px 24px;
+}
+
+.hub-overlay-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hc-text-h);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hub-overlay-close:hover {
+  border-color: var(--hc-gold);
+  color: var(--hc-gold);
+}
+
+.hub-overlay-title {
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--hc-text);
+}
+
+/* --- Incoming challenge modal ---------------------------------------- */
+
+.challenge-modal-panel {
+  max-width: 360px;
+  text-align: center;
+}
+
+.challenge-modal-text {
+  margin: 8px 0 20px;
+  font-size: 15px;
+  color: var(--hc-text-h);
+}
+
+.challenge-modal-text strong {
+  color: var(--hc-gold);
+}
+
+.challenge-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.challenge-modal-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+}
+
+.challenge-accept-btn {
+  background: linear-gradient(135deg, #ffd873, #f5c542 60%, #e0a82e);
+  color: #1c1400;
+}
+
+.challenge-decline-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--hc-text-h);
+  border: 1px solid var(--hc-border-strong) !important;
+}

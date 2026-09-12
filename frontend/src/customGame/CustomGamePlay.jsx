@@ -3,6 +3,7 @@ import { Chessboard } from "react-chessboard";
 import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { computeLegalDestinations } from "./legalMoves";
+import { KING_SKINS, useEquippedSkin } from "./skinStore";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -21,6 +22,10 @@ function canDragWhiteOnly({ piece }) {
 
 export default function CustomGamePlay({ initialGame, onExit }) {
   const [gameState, setGameState] = useState(initialGame);
+  // The human is always White here (vs-AI), so the equipped skin only ever
+  // needs to replace White's King art.
+  const equippedSkin = useEquippedSkin();
+  const whiteKingSkinSrc = KING_SKINS[equippedSkin].whiteTeamSrc;
   const [shootArmed, setShootArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
@@ -31,7 +36,12 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const isOver = gameState.status !== "in_progress";
   const whiteArcherSquares = gameState.white_archer_squares || [];
   const whiteWizardSquares = gameState.white_wizard_squares || [];
+  const whiteHydraSquares = gameState.white_hydra_squares || [];
+  const whiteCyclopsSquares = gameState.white_cyclops_squares || [];
+  const whiteMirrorSquares = gameState.white_mirror_squares || [];
   const hasArchers = whiteArcherSquares.length > 0;
+  // White's Mirror mimics whatever BLACK (its opponent) last moved.
+  const mirrorMimicType = gameState.black_last_moved_type ? gameState.black_last_moved_type.toLowerCase() : null;
 
   function showLegalDestinationsFor(square) {
     const isArcherSquare = whiteArcherSquares.includes(square);
@@ -42,6 +52,10 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         isDragonSquare: square === gameState.white_dragon_square,
         isWizardSquare: whiteWizardSquares.includes(square),
         isArcherSquare,
+        isHydraSquare: whiteHydraSquares.includes(square),
+        isCyclopsSquare: whiteCyclopsSquares.includes(square),
+        isMirrorSquare: whiteMirrorSquares.includes(square),
+        mirrorMimicType,
         shootArmed: shootArmed && isArcherSquare,
       })
     );
@@ -117,6 +131,13 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         blackWizardSquares: gameState.black_wizard_squares,
         whiteArcherSquares: gameState.white_archer_squares,
         blackArcherSquares: gameState.black_archer_squares,
+        whiteHydraSquares: gameState.white_hydra_squares,
+        blackHydraSquares: gameState.black_hydra_squares,
+        whiteCyclopsSquares: gameState.white_cyclops_squares,
+        blackCyclopsSquares: gameState.black_cyclops_squares,
+        whiteMirrorSquares: gameState.white_mirror_squares,
+        blackMirrorSquares: gameState.black_mirror_squares,
+        whiteKingSkinSrc,
       }),
     [
       gameState.white_dragon_square,
@@ -125,6 +146,13 @@ export default function CustomGamePlay({ initialGame, onExit }) {
       gameState.black_wizard_squares,
       gameState.white_archer_squares,
       gameState.black_archer_squares,
+      gameState.white_hydra_squares,
+      gameState.black_hydra_squares,
+      gameState.white_cyclops_squares,
+      gameState.black_cyclops_squares,
+      gameState.white_mirror_squares,
+      gameState.black_mirror_squares,
+      whiteKingSkinSrc,
     ]
   );
 
@@ -149,7 +177,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     },
     onPieceDrop: handlePieceDrop,
     onSquareClick: handleSquareClick,
-    boardStyle: { borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" },
+    boardStyle: { borderRadius: "4px" },
     lightSquareStyle: { background: FLAT_2D_BOARD_COLORS.light },
     darkSquareStyle: { background: FLAT_2D_BOARD_COLORS.dark },
     squareStyles,
@@ -197,6 +225,16 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         <div>
           <strong>Your Archers:</strong>{" "}
           {whiteArcherSquares.length > 0 ? whiteArcherSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Hydras:</strong> {whiteHydraSquares.length > 0 ? whiteHydraSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Cyclopses:</strong>{" "}
+          {whiteCyclopsSquares.length > 0 ? whiteCyclopsSquares.join(", ") : "none in play"}
+        </div>
+        <div>
+          <strong>Your Mirrors:</strong> {whiteMirrorSquares.length > 0 ? whiteMirrorSquares.join(", ") : "none in play"}
         </div>
         <div>
           <strong>Opponent:</strong> Computer (~1000)

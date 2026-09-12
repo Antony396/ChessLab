@@ -28,6 +28,22 @@ class CustomGame:
     black_wizard_squares: set[chess.Square] = field(default_factory=set)
     white_archer_squares: set[chess.Square] = field(default_factory=set)
     black_archer_squares: set[chess.Square] = field(default_factory=set)
+    # Hydra/Cyclops/Mirror are drafted directly (like the Archer), not
+    # evolved from another piece, so each just needs its own tracked-squares
+    # set the same way.
+    white_hydra_squares: set[chess.Square] = field(default_factory=set)
+    black_hydra_squares: set[chess.Square] = field(default_factory=set)
+    white_cyclops_squares: set[chess.Square] = field(default_factory=set)
+    black_cyclops_squares: set[chess.Square] = field(default_factory=set)
+    white_mirror_squares: set[chess.Square] = field(default_factory=set)
+    black_mirror_squares: set[chess.Square] = field(default_factory=set)
+    # The base piece type (chess.PieceType) each color most recently moved -
+    # e.g. a Dragon's move records ROOK (its stored type), a Mirror's move
+    # records whatever it mimicked that turn. None until that color has
+    # moved at all. A Mirror's own legal moves/threats are resolved by
+    # reading the OPPONENT's copy of this field - see custom_game_routes.py.
+    white_last_moved_type: Optional[chess.PieceType] = None
+    black_last_moved_type: Optional[chess.PieceType] = None
     vs_ai: bool = False
     status: str = "in_progress"
     action_log: list[str] = field(default_factory=list)
@@ -67,6 +83,12 @@ def create_game(
     black_wizard_squares: Optional[set[chess.Square]] = None,
     white_archer_squares: Optional[set[chess.Square]] = None,
     black_archer_squares: Optional[set[chess.Square]] = None,
+    white_hydra_squares: Optional[set[chess.Square]] = None,
+    black_hydra_squares: Optional[set[chess.Square]] = None,
+    white_cyclops_squares: Optional[set[chess.Square]] = None,
+    black_cyclops_squares: Optional[set[chess.Square]] = None,
+    white_mirror_squares: Optional[set[chess.Square]] = None,
+    black_mirror_squares: Optional[set[chess.Square]] = None,
     vs_ai: bool = False,
 ) -> CustomGame:
     game = CustomGame(
@@ -78,6 +100,12 @@ def create_game(
         black_wizard_squares=black_wizard_squares or set(),
         white_archer_squares=white_archer_squares or set(),
         black_archer_squares=black_archer_squares or set(),
+        white_hydra_squares=white_hydra_squares or set(),
+        black_hydra_squares=black_hydra_squares or set(),
+        white_cyclops_squares=white_cyclops_squares or set(),
+        black_cyclops_squares=black_cyclops_squares or set(),
+        white_mirror_squares=white_mirror_squares or set(),
+        black_mirror_squares=black_mirror_squares or set(),
         vs_ai=vs_ai,
     )
     _GAMES[game.id] = game

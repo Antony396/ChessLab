@@ -1,63 +1,190 @@
+/* Evo Chess - polished indie-game theme, scoped entirely to .hero-chess-app
+   (and its SubNav header) so the rest of the app keeps its own look
+   untouched. */
 .hero-chess-app {
-  max-width: 680px;
+  --hc-bg-center: #1c2230;
+  --hc-bg-edge: #0d1017;
+  --hc-surface: rgba(22, 27, 38, 0.8);
+  --hc-surface-strong: rgba(34, 41, 56, 0.85);
+  --hc-border: rgba(255, 255, 255, 0.08);
+  --hc-border-strong: rgba(255, 255, 255, 0.18);
+  --hc-gold: #f5c542;
+  --hc-gold-strong: #ffd873;
+  --hc-gold-dark: #e0a82e;
+  --hc-evo: #9d4edd;
+  --hc-evo-strong: #c084fc;
+  --hc-cyan: #00e5ff;
+  --hc-locked: #2a303c;
+  --hc-danger: #ff4d4d;
+  --hc-text-h: #f5f6f8;
+  --hc-text: #93a0b4;
+  --hc-radius: 10px;
+  --hc-radius-sm: 6px;
+  font-family: "Inter", "Space Grotesk", sans-serif;
+  max-width: 760px;
   margin: 0 auto;
+  padding: 20px 16px 40px;
+  color: var(--hc-text-h);
+  position: relative;
+}
+
+.hero-chess-app,
+.hero-chess-app input,
+.hero-chess-app button {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Deep radial gradient background, bled behind the SubNav bar too, so the
+   whole screen reads as one distinct, premium environment. */
+.app:has(.hero-chess-app) {
+  background: radial-gradient(ellipse 1100px 700px at 50% 0%, var(--hc-bg-center), var(--hc-bg-edge) 75%);
+  min-height: 100vh;
+}
+
+/* Branded header: geometric gaming type + a refined nav pill. */
+.app:has(.hero-chess-app) .sub-nav {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-top: 4px;
+}
+
+.app:has(.hero-chess-app) .sub-nav-title {
+  display: inline-block;
+  font-family: "Rajdhani", "Inter", sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.4;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #f5f6f8;
+  background: linear-gradient(135deg, #fff 0%, var(--hc-gold) 60%, var(--hc-gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  overflow: visible;
+}
+
+.app:has(.hero-chess-app) .home-link {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(8px);
+  color: #93a0b4;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.app:has(.hero-chess-app) .home-link:hover {
+  border-color: rgba(245, 197, 66, 0.4);
+  color: var(--hc-gold);
+  transform: translateX(-1px);
+}
+
+.hero-chess-app button {
+  font-family: inherit;
 }
 
 .shoot-toggle-btn,
-.start-game-btn,
 .custom-play-toolbar button {
   font: inherit;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-h);
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
   cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
 }
 
-.custom-play-board {
+.shoot-toggle-btn:hover:not(:disabled),
+.custom-play-toolbar button:hover {
+  border-color: var(--hc-border-strong);
+  background: var(--hc-surface-strong);
+}
+
+/* Specificity bumped (.custom-play .custom-play-board, not just
+   .custom-play-board) so this reliably wins over the generic .board-wrap
+   rule in App.css (max-width: 420px, left over from the original analyzer
+   page) - that class is also applied to this same element, and being an
+   equal-specificity single-class selector, cascade order alone previously
+   decided the winner, which is fragile and was in fact silently pinning
+   this board to 420px regardless of this rule. */
+.custom-play .custom-play-board {
   width: 100%;
-  max-width: 420px;
+  max-width: 640px;
   margin: 8px auto;
 }
 
 .start-buttons-row {
   display: flex;
   justify-content: center;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 16px;
 }
 
+/* Primary hero button: gold gradient, dark bold text, scale+inset press. */
 .start-game-btn {
   display: block;
   margin: 0;
-  background: var(--accent);
-  color: #fff;
+  background: linear-gradient(160deg, var(--hc-gold) 0%, var(--hc-gold-dark) 100%);
+  color: var(--hc-bg-edge);
   border: none;
-  padding: 8px 20px;
+  border-radius: var(--hc-radius-sm);
+  padding: 11px 24px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 8px 20px -8px rgba(245, 197, 66, 0.5);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
 
+.start-game-btn:not(:disabled):hover {
+  transform: scale(1.03);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 12px 26px -8px rgba(245, 197, 66, 0.65);
+}
+
+.start-game-btn:not(:disabled):active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) inset;
+}
+
+/* Secondary action: dark outline frame. */
 .start-game-btn.online {
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
+  border: 1px solid #3a4150;
+  box-shadow: none;
+}
+
+.start-game-btn.online:not(:disabled):hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  transform: scale(1.03);
 }
 
 .start-game-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
+  filter: none;
 }
 
 .custom-play-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 10px;
 }
 
 .custom-play-turn {
-  font-weight: 600;
-  color: var(--text-h);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  color: var(--hc-text-h);
+  text-transform: uppercase;
+  font-size: 15px;
+  letter-spacing: 0.8px;
 }
 
 .shoot-toggle-row {
@@ -65,13 +192,13 @@
   align-items: center;
   gap: 10px;
   justify-content: center;
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 .shoot-toggle-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: linear-gradient(160deg, var(--hc-gold-strong), var(--hc-gold));
+  color: var(--hc-bg-edge);
+  border-color: var(--hc-gold-dark);
 }
 
 .shoot-toggle-btn:disabled {
@@ -81,36 +208,43 @@
 
 .shoot-toggle-hint {
   font-size: 12px;
-  color: var(--text);
+  color: var(--hc-text);
 }
 
 .custom-play-status {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   font-size: 13px;
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
+  color: var(--hc-text);
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius);
+  background: var(--hc-surface);
+  backdrop-filter: blur(8px);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.custom-play-status strong {
+  color: var(--hc-text-h);
 }
 
 .online-waiting-panel {
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  border: 1px solid var(--hc-border);
+  background: var(--hc-surface);
+  backdrop-filter: blur(8px);
+  border-radius: var(--hc-radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
   font-size: 13px;
-  color: var(--text-h);
+  color: var(--hc-text-h);
 }
 
 .online-waiting-link-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .online-waiting-link {
@@ -119,19 +253,21 @@
   white-space: nowrap;
   font-family: var(--mono);
   font-size: 12px;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  padding: 5px 9px;
+  color: var(--hc-text-h);
 }
 
 .online-waiting-link-row button {
   font: inherit;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-h);
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface-strong);
+  color: var(--hc-text-h);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -139,8 +275,28 @@
 .action-log {
   font-family: var(--mono);
   font-size: 13px;
-  color: var(--text-h);
+  color: var(--hc-text-h);
   padding-left: 20px;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.hero-chess-app h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--hc-text);
+}
+
+.hero-chess-app .hint {
+  color: var(--hc-text);
+}
+
+.hero-chess-app .error-banner {
+  background: rgba(127, 29, 29, 0.25);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: var(--hc-radius-sm);
+  backdrop-filter: blur(8px);
 }
