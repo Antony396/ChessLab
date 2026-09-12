@@ -12,6 +12,7 @@ It's an approximation of "~1000", not a calibrated one.
 
 from __future__ import annotations
 
+import threading
 from typing import Optional
 
 import chess
@@ -22,6 +23,34 @@ from app.config import STOCKFISH_PATH
 AI_UCI_ELO_FLOOR = 1320
 AI_TIME_LIMIT_SECONDS = 0.05
 AI_DEPTH_LIMIT = 5
+
+# Launching a fresh Stockfish subprocess (full UCI handshake included) on
+# every single move dwarfed the ~50ms search time limit below - several
+# seconds of pure process-spawn overhead on a resource-constrained host,
+# which was the actual "the AI is slow" complaint, not the search itself.
+# Keeping one engine process alive for the life of the server and reusing
+# it turns every move after the very first into just the real search time.
+# Guarded by a lock since FastAPI runs sync routes across a thread pool,
+# and a UCI engine's stdin/stdout exchange isn't safe to interleave from
+# two threads making moves in two different games at once.
+_engine: Optional[chess.engine.SimpleEngine] = None
+_engine_lock = threading.Lock()
+
+
+def _get_engine() -> chess.engine.SimpleEngine:
+    global _engine
+    if _engine is None:
+        _engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+        _engine.configure({"UCI_LimitStrength": True, "UCI_Elo": AI_UCI_ELO_FLOOR})
+    return _engine
+
+
+def shutdown_engine() -> None:
+    global _engine
+    with _engine_lock:
+        if _engine is not None:
+            _engine.quit()
+            _engine = None
 
 
 def compute_ai_move(board: chess.Board, excluded_moves: Optional[set[chess.Move]] = None) -> chess.Move:
@@ -46,10 +75,17 @@ def compute_ai_move(board: chess.Board, excluded_moves: Optional[set[chess.Move]
         if not root_moves:
             raise RuntimeError("No legal moves remain for the engine to choose from")
 
-    with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as engine:
-        engine.configure({"UCI_LimitStrength": True, "UCI_Elo": AI_UCI_ELO_FLOOR})
-        limit = chess.engine.Limit(time=AI_TIME_LIMIT_SECONDS, depth=AI_DEPTH_LIMIT)
-        result = engine.play(snapshot, limit, root_moves=root_moves)
-        if result.move is None:
-            raise RuntimeError("Engine returned no move")
-        return result.move
+    limit = chess.engine.Limit(time=AI_TIME_LIMIT_SECONDS, depth=AI_DEPTH_LIMIT)
+    with _engine_lock:
+        try:
+            result = _get_engine().play(snapshot, limit, root_moves=root_moves)
+        except chess.engine.EngineTerminatedError:
+            # The process died underneath us (e.g. host OOM-killed it) -
+            # relaunch once and retry rather than staying broken forever.
+            global _engine
+            _engine = None
+            result = _get_engine().play(snapshot, limit, root_moves=root_moves)
+
+    if result.move is None:
+        raise RuntimeError("Engine returned no move")
+    return result.move

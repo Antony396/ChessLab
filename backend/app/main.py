@@ -7,6 +7,7 @@ from app.api.custom_game_routes import router as custom_game_router
 from app.api.online_game_routes import router as online_game_router
 from app.api.routes import router
 from app.api.social_routes import router as social_router
+from app.custom_chess.ai import shutdown_engine
 from app.db import init_db
 
 app = FastAPI(title="Chess Game Analyzer")
@@ -26,6 +27,11 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    shutdown_engine()
 
 
 @app.get("/health")
