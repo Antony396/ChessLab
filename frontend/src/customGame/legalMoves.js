@@ -50,6 +50,29 @@ function offsetDestinations(offsets, fromSquare) {
   return destinations;
 }
 
+// A quick client-side "best guess" at the resulting position for a plain
+// move, so the mover's own board can update the instant they drop a piece
+// instead of waiting on the network round trip. Only ever used for the
+// optimistic preview, never for rule enforcement: chess.js correctly
+// handles every normal move (including a hero piece's "plain" mode, since
+// the FEN only ever encodes the base type it's stored as), but rejects
+// every hero-only special move - a Hydra's ring-hop, a Cyclops's far
+// capture, a Mirror's mimicked move, an Archer's shoot - since those
+// aren't legal chess moves for whatever plain piece the FEN says is really
+// there. Returning null for those just means "don't preview this one,
+// wait for the server" - the authoritative response/broadcast overwrites
+// this guess regardless, and the caller rolls it back if the server ends
+// up rejecting the move outright.
+export function tryOptimisticFen(fen, from, to, promotion = "q") {
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({ from, to, promotion });
+    return move ? chess.fen() : null;
+  } catch {
+    return null;
+  }
+}
+
 function kingStepDestinations(chess, fromSquare) {
   const mover = chess.get(fromSquare);
   return offsetDestinations(KING_STEP_OFFSETS, fromSquare).filter((square) => {

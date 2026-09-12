@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
-import { computeLegalDestinations } from "./legalMoves";
+import { computeLegalDestinations, tryOptimisticFen } from "./legalMoves";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
@@ -81,7 +81,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     showLegalDestinationsFor(square);
   }
 
-  async function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
+  function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
     setLegalDestinations([]);
     setSelectedSquare(null);
     if (!targetSquare || moving || isOver) return false;
@@ -89,37 +89,57 @@ export default function CustomGamePlay({ initialGame, onExit }) {
 
     const shoot = shootArmed && whiteArcherSquares.includes(sourceSquare);
 
+    // Show the player's own move immediately rather than waiting on the
+    // round trip - see tryOptimisticFen's own comment for exactly which
+    // moves this covers. The real response (below) overwrites this guess
+    // moments later regardless; if the server rejects the move outright,
+    // the .catch() rolls the board back to how it looked before.
+    //
+    // Deliberately not awaited before returning - react-chessboard appears
+    // to hold the drag/drop visual open until this function's return value
+    // is known, so awaiting the network round trip here would recreate the
+    // exact lag this is meant to fix. Everything below runs in the
+    // background instead.
+    const previousGameState = gameState;
+    let appliedOptimistic = false;
+    if (!shoot) {
+      const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare);
+      if (optimisticFen) {
+        appliedOptimistic = true;
+        setGameState((prev) => ({ ...prev, fen: optimisticFen }));
+      }
+    }
+
     setMoving(true);
     setError(null);
-    try {
-      // Resolve and render the player's own move first, so it never waits
-      // on the computer's think time to appear on the board.
-      const afterPlayerMove = await postCustomMove({
-        game_id: gameState.id,
-        from_square: sourceSquare,
-        to_square: targetSquare,
-        shoot,
+    postCustomMove({
+      game_id: gameState.id,
+      from_square: sourceSquare,
+      to_square: targetSquare,
+      shoot,
+    })
+      .then((afterPlayerMove) => {
+        setGameState(afterPlayerMove);
+        setShootArmed(false);
+        if (afterPlayerMove.vs_ai && afterPlayerMove.status === "in_progress" && afterPlayerMove.turn === "black") {
+          setAiThinking(true);
+          return postAiMove(afterPlayerMove.id).then((afterAiMove) => setGameState(afterAiMove));
+        }
+      })
+      .catch((e) => {
+        setError(e.message);
+        if (appliedOptimistic) setGameState(previousGameState);
+      })
+      .finally(() => {
+        setMoving(false);
+        setAiThinking(false);
       });
-      setGameState(afterPlayerMove);
-      setShootArmed(false);
-
-      if (afterPlayerMove.vs_ai && afterPlayerMove.status === "in_progress" && afterPlayerMove.turn === "black") {
-        setAiThinking(true);
-        const afterAiMove = await postAiMove(afterPlayerMove.id);
-        setGameState(afterAiMove);
-      }
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setMoving(false);
-      setAiThinking(false);
-    }
 
     // A shoot never relocates the archer, so react-chessboard must not
     // "complete" the drag by moving the dragged piece to targetSquare -
-    // returning false snaps it back to sourceSquare while gameState (already
-    // updated above with the shot's real effect) re-renders the board.
-    return !shoot;
+    // returning false snaps it back to sourceSquare while gameState (once
+    // the shot's real effect comes back above) re-renders the board.
+    return appliedOptimistic && !shoot;
   }
 
   const pieces = useMemo(

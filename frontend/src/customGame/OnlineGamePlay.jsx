@@ -3,7 +3,7 @@ import { Chessboard } from "react-chessboard";
 import { onlineGameWsUrl, postOnlineMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
-import { computeLegalDestinations } from "./legalMoves";
+import { computeLegalDestinations, tryOptimisticFen } from "./legalMoves";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -124,7 +124,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     showLegalDestinationsFor(square);
   }
 
-  async function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
+  function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
     setLegalDestinations([]);
     setSelectedSquare(null);
     if (!targetSquare || moving || isOver || !isMyTurn) return false;
@@ -132,28 +132,48 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
 
     const shoot = shootArmed && myArcherSquares.includes(sourceSquare);
 
-    setMoving(true);
-    setError(null);
-    let succeeded = false;
-    try {
-      // The move's real effect arrives back over the socket (both players
-      // read from that one broadcast) - this request just submits it.
-      await postOnlineMove({
-        game_id: gameState.id,
-        player_token: myToken,
-        from_square: sourceSquare,
-        to_square: targetSquare,
-        shoot,
-      });
-      succeeded = true;
-      setShootArmed(false);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setMoving(false);
+    // Show my own move immediately rather than waiting on the round trip -
+    // see tryOptimisticFen's own comment for exactly which moves this
+    // covers. The authoritative broadcast (in the WS effect above)
+    // overwrites this guess moments later regardless; if the server
+    // rejects the move outright, the .catch() below rolls the board back.
+    //
+    // Deliberately NOT awaited before returning: react-chessboard appears
+    // to hold the drag/drop visual open until this function's return value
+    // is known, so awaiting the network round trip here would recreate the
+    // exact lag this is meant to fix. The request instead runs in the
+    // background and this returns synchronously with just the optimistic
+    // guess.
+    const previousGameState = gameState;
+    let appliedOptimistic = false;
+    if (!shoot) {
+      const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare);
+      if (optimisticFen) {
+        appliedOptimistic = true;
+        setGameState((prev) => ({ ...prev, fen: optimisticFen }));
+      }
     }
 
-    return succeeded && !shoot;
+    setMoving(true);
+    setError(null);
+    postOnlineMove({
+      game_id: gameState.id,
+      player_token: myToken,
+      from_square: sourceSquare,
+      to_square: targetSquare,
+      shoot,
+    })
+      .then(() => setShootArmed(false))
+      .catch((e) => {
+        setError(e.message);
+        if (appliedOptimistic) setGameState(previousGameState);
+      })
+      .finally(() => setMoving(false));
+
+    // A shoot never relocates the Archer - always snap it back regardless
+    // of the request's outcome, since gameState (left untouched above)
+    // already reflects the truth either way once the broadcast lands.
+    return appliedOptimistic && !shoot;
   }
 
   const pieces = useMemo(
