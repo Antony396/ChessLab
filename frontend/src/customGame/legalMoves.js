@@ -50,27 +50,105 @@ function offsetDestinations(offsets, fromSquare) {
   return destinations;
 }
 
-// A quick client-side "best guess" at the resulting position for a plain
-// move, so the mover's own board can update the instant they drop a piece
-// instead of waiting on the network round trip. Only ever used for the
-// optimistic preview, never for rule enforcement: chess.js correctly
-// handles every normal move (including a hero piece's "plain" mode, since
-// the FEN only ever encodes the base type it's stored as), but rejects
-// every hero-only special move - a Hydra's ring-hop, a Cyclops's far
-// capture, a Mirror's mimicked move, an Archer's shoot - since those
-// aren't legal chess moves for whatever plain piece the FEN says is really
-// there. Returning null for those just means "don't preview this one,
-// wait for the server" - the authoritative response/broadcast overwrites
-// this guess regardless, and the caller rolls it back if the server ends
-// up rejecting the move outright.
-export function tryOptimisticFen(fen, from, to, promotion = "q") {
+// Relocates a piece by hand (remove from `from`, remove/replace whatever's
+// on `to`, put it back down there) and fixes up the FEN's active-color /
+// halfmove / fullmove fields to match - the same bookkeeping a normal move
+// gets, just done manually since chess.js's own move() has no idea these
+// moves are legal at all. Never used for a castle, en passant, or
+// promotion - no hero special move is ever any of those.
+function applyRelocateAndCapture(fen, from, to) {
   try {
     const chess = new Chess(fen);
-    const move = chess.move({ from, to, promotion });
-    return move ? chess.fen() : null;
+    const mover = chess.get(from);
+    if (!mover) return null;
+    const wasCapture = Boolean(chess.get(to));
+    chess.remove(from);
+    if (wasCapture) chess.remove(to);
+    chess.put({ type: mover.type, color: mover.color }, to);
+
+    const [placement, activeColor, castling] = chess.fen().split(" ");
+    const nextColor = activeColor === "w" ? "b" : "w";
+    const fullmove = Number(fen.split(" ")[5]) + (activeColor === "b" ? 1 : 0);
+    return `${placement} ${nextColor} ${castling} - ${wasCapture ? 0 : Number(fen.split(" ")[4]) + 1} ${fullmove}`;
   } catch {
     return null;
   }
+}
+
+// An Archer's shoot never relocates it - this just removes whatever's on
+// the target square and passes the turn, same idea as above.
+function applyNonRelocatingCapture(fen, targetSquare) {
+  try {
+    const chess = new Chess(fen);
+    if (!chess.get(targetSquare)) return null;
+    chess.remove(targetSquare);
+
+    const [placement, activeColor, castling] = chess.fen().split(" ");
+    const nextColor = activeColor === "w" ? "b" : "w";
+    const fullmove = Number(fen.split(" ")[5]) + (activeColor === "b" ? 1 : 0);
+    return `${placement} ${nextColor} ${castling} - 0 ${fullmove}`;
+  } catch {
+    return null;
+  }
+}
+
+// A quick client-side "best guess" at the resulting position for a move,
+// so the mover's own board can update the instant they drop a piece
+// instead of waiting on the network round trip. Only ever used for the
+// optimistic preview, never for rule enforcement - the authoritative
+// response/broadcast overwrites this guess moments later regardless, and
+// the caller rolls it back if the server ends up rejecting the move
+// outright.
+//
+// Tries a plain chess.js move first, since that correctly handles every
+// normal move (including a hero piece's own "plain" mode - the FEN only
+// ever encodes the base type it's stored as). If that's not legal, and the
+// caller says this square is a Hydra/Cyclops/Mirror/Archer, checks whether
+// `to` is actually one of THAT piece's own hero-special destinations
+// (reusing the exact same candidate logic computeLegalDestinations uses)
+// before applying it by hand - so a genuinely illegal drop still correctly
+// returns null and waits for the server to reject it, same as before.
+export function tryOptimisticFen(
+  fen,
+  from,
+  to,
+  { promotion = "q", isHydraSquare, isCyclopsSquare, isMirrorSquare, mirrorMimicType, shoot } = {}
+) {
+  if (shoot) return applyNonRelocatingCapture(fen, to);
+
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({ from, to, promotion });
+    if (move) return chess.fen();
+  } catch {
+    // Not a plain chess.js-legal move - fall through to the hero-special
+    // checks below rather than giving up immediately.
+  }
+
+  let chess;
+  try {
+    chess = new Chess(fen);
+  } catch {
+    return null;
+  }
+  const mover = chess.get(from);
+  if (!mover) return null;
+
+  if (isHydraSquare && hydraRingExtraDestinations(chess, from).includes(to)) {
+    return applyRelocateAndCapture(fen, from, to);
+  }
+  if (isCyclopsSquare && cyclopsSpecialCaptureSquare(from, mover.color) === to) {
+    const occupant = chess.get(to);
+    if (occupant && occupant.color !== mover.color && occupant.type !== "k") {
+      return applyRelocateAndCapture(fen, from, to);
+    }
+    return null;
+  }
+  if (isMirrorSquare && mirrorMimicType && mirrorMimicDestinations(chess, from, mirrorMimicType).includes(to)) {
+    return applyRelocateAndCapture(fen, from, to);
+  }
+
+  return null;
 }
 
 function kingStepDestinations(chess, fromSquare) {

@@ -102,12 +102,16 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     // background instead.
     const previousGameState = gameState;
     let appliedOptimistic = false;
-    if (!shoot) {
-      const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare);
-      if (optimisticFen) {
-        appliedOptimistic = true;
-        setGameState((prev) => ({ ...prev, fen: optimisticFen }));
-      }
+    const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
+      isHydraSquare: whiteHydraSquares.includes(sourceSquare),
+      isCyclopsSquare: whiteCyclopsSquares.includes(sourceSquare),
+      isMirrorSquare: whiteMirrorSquares.includes(sourceSquare),
+      mirrorMimicType,
+      shoot,
+    });
+    if (optimisticFen) {
+      appliedOptimistic = true;
+      setGameState((prev) => ({ ...prev, fen: optimisticFen }));
     }
 
     setMoving(true);

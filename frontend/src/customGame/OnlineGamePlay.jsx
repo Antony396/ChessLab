@@ -146,12 +146,16 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     // guess.
     const previousGameState = gameState;
     let appliedOptimistic = false;
-    if (!shoot) {
-      const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare);
-      if (optimisticFen) {
-        appliedOptimistic = true;
-        setGameState((prev) => ({ ...prev, fen: optimisticFen }));
-      }
+    const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
+      isHydraSquare: myHydraSquares.includes(sourceSquare),
+      isCyclopsSquare: myCyclopsSquares.includes(sourceSquare),
+      isMirrorSquare: myMirrorSquares.includes(sourceSquare),
+      mirrorMimicType,
+      shoot,
+    });
+    if (optimisticFen) {
+      appliedOptimistic = true;
+      setGameState((prev) => ({ ...prev, fen: optimisticFen }));
     }
 
     setMoving(true);
