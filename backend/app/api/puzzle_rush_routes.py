@@ -30,19 +30,13 @@ def start_rush(payload: StartRushRequest, user_id: str = Depends(get_current_use
     )
 
 
-def _parse_move(board: chess.Board, from_square: str, to_square: str, promotion: str | None) -> chess.Move:
+def _parse_squares(from_square: str, to_square: str) -> tuple[chess.Square, chess.Square]:
     try:
         from_sq = chess.parse_square(from_square.strip().lower())
         to_sq = chess.parse_square(to_square.strip().lower())
     except ValueError:
         raise HTTPException(400, "Invalid square notation")
-    promotion_type = None
-    if promotion:
-        try:
-            promotion_type = chess.Piece.from_symbol(promotion.strip().lower()).piece_type
-        except ValueError:
-            raise HTTPException(400, "Invalid promotion piece")
-    return chess.Move(from_sq, to_sq, promotion=promotion_type)
+    return from_sq, to_sq
 
 
 @router.post("/move", response_model=SubmitMoveResponse)
@@ -64,9 +58,21 @@ def submit_move(payload: SubmitMoveRequest, user_id: str = Depends(get_current_u
             next_puzzle=False,
         )
 
-    move = _parse_move(session.board, payload.from_square, payload.to_square, payload.promotion)
-
-    if not session.remaining_moves or move.uci() != session.remaining_moves[0]:
+    from_sq, to_sq = _parse_squares(payload.from_square, payload.to_square)
+    # Compared by from/to squares only, never the promotion piece: the
+    # frontend always sends promotion="q" as a plain drag-and-drop default
+    # (even for a move that isn't a promotion at all), and a puzzle's own
+    # solution can call for underpromoting to something else entirely (a
+    # Knight, say) - reconstructing a chess.Move from the client's guessed
+    # promotion and comparing full UCI strings meant a mismatched or
+    # spuriously-attached promotion letter could make an otherwise-correct
+    # move register as wrong. This was the "no moves lead to a success"
+    # bug - queen-appended UCI ("e2e4q") never matched a plain solution
+    # move ("e2e4"). The move actually applied below always comes from the
+    # puzzle's own trusted solution string, so the client's promotion
+    # choice is irrelevant to correctness either way.
+    move_uci = f"{chess.square_name(from_sq)}{chess.square_name(to_sq)}"
+    if not session.remaining_moves or move_uci != session.remaining_moves[0][:4]:
         # Wrong - the fixed-timer rule is "mistakes cost time, not a
         # life", so the position doesn't change and they can just try
         # again.
