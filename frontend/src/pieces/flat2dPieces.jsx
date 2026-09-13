@@ -112,7 +112,7 @@ export const FLAT_2D_BOARD_COLORS = { light: "#eee9e0", dark: "#596670" };
 // Mirrors backend/app/api/custom_game_routes.py's POINT_COSTS/DRAGON_COST/
 // WIZARD_COST/ARCHER_COST/HYDRA_COST/CYCLOPS_COST/MIRROR_COST/PAWN_COST -
 // keep these in sync if any changes.
-export const ARCHER_COST = 4;
+export const ARCHER_COST = 6;
 export const HYDRA_COST = 12;
 export const CYCLOPS_COST = 2;
 export const MIRROR_COST = 5;

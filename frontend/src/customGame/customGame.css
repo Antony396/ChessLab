@@ -109,22 +109,33 @@
    decided the winner, which is fragile and was in fact silently pinning
    this board to 420px regardless of this rule. */
 .custom-play .custom-play-board {
+  position: relative; /* anchors .game-status-banner to this board's own corner, not the page */
   width: 100%;
   max-width: 640px;
   margin: 8px auto;
 }
 
+/* An overlay badge in the board's own top-left corner rather than a
+   block-flow banner above it - the earlier full-width version pushed the
+   board itself down every time one appeared/disappeared, which read as the
+   board jumping around mid-game. Absolutely positioned against
+   .custom-play-board (see above) so it never affects layout at all. */
 .game-status-banner {
-  max-width: 640px;
-  margin: 0 auto 10px;
-  padding: 10px 16px;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  max-width: 55%;
+  padding: 6px 12px;
   border-radius: var(--hc-radius-sm);
-  text-align: center;
+  text-align: left;
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 0.6px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
+  line-height: 1.3;
+  pointer-events: none;
   animation: game-status-banner-in 0.2s ease-out;
 }
 
@@ -149,14 +160,14 @@
   background: linear-gradient(160deg, rgba(245, 197, 66, 0.22), rgba(245, 197, 66, 0.08));
   border: 1px solid var(--hc-gold);
   color: var(--hc-gold);
-  font-size: 22px;
+  font-size: 15px;
 }
 
 .game-status-banner.checkmate.lose {
   background: rgba(217, 60, 60, 0.16);
   border: 1px solid rgba(217, 60, 60, 0.55);
   color: #e07070;
-  font-size: 22px;
+  font-size: 15px;
 }
 
 .game-status-banner.draw {

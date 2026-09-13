@@ -262,15 +262,14 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         </button>
       </div>
 
-      {history.isViewingHistory ? (
-        <div className="game-status-banner reviewing">
-          Reviewing move {history.currentIndex} of {history.liveIndex}
-        </div>
-      ) : (
-        <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor="white" />
-      )}
-
       <div className="board-wrap custom-play-board">
+        {history.isViewingHistory ? (
+          <div className="game-status-banner reviewing">
+            Reviewing move {history.currentIndex} of {history.liveIndex}
+          </div>
+        ) : (
+          <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor="white" />
+        )}
         <Chessboard options={options} />
       </div>
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { playRewindSound } from "./sound";
 
 // Chess.com-style back/forward review of past positions, driven entirely by
 // gameState.fen_history (one FEN per position the board has actually been
@@ -17,7 +18,12 @@ export function useMoveHistory(gameState) {
   const viewingFen = fenHistory[currentIndex] ?? gameState.fen;
 
   function goBack() {
-    setHistoryIndex((prev) => Math.max(0, (prev === null ? liveIndex : prev) - 1));
+    setHistoryIndex((prev) => {
+      const from = prev === null ? liveIndex : prev;
+      const next = Math.max(0, from - 1);
+      if (next < from) playRewindSound();
+      return next;
+    });
   }
 
   function goForward() {
@@ -28,9 +34,13 @@ export function useMoveHistory(gameState) {
     });
   }
 
-  // index is a fen_history index directly (0 = starting position).
+  // index is a fen_history index directly (0 = starting position). Only
+  // plays the rewind sound when this actually moves backward - same "each
+  // backward move" rule goBack follows above - not on a forward jump or a
+  // no-op re-click of the already-current entry.
   function goToIndex(index) {
     const clamped = Math.max(0, Math.min(index, liveIndex));
+    if (clamped < currentIndex) playRewindSound();
     setHistoryIndex(clamped >= liveIndex ? null : clamped);
   }
 

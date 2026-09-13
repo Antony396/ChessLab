@@ -67,3 +67,28 @@ export function playCaptureSound() {
 export function playHopSound() {
   playClick({ freq: 320, duration: 0.06, noiseAmount: 0.7, gain: 0.2 });
 }
+
+// A short downward pitch sweep - deliberately NOT playClick's percussive
+// texture, so stepping backward through move history reads as distinct
+// from an actual move landing (playMoveSound), matching how chess.com-style
+// move-history scrubbing sounds different from playing a real move.
+export function playRewindSound() {
+  const ctx = getContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const duration = 0.09;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(260, now + duration);
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0.22, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.connect(gainNode).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+  } catch {
+    // Sound is a nice-to-have, never worth breaking navigation over.
+  }
+}

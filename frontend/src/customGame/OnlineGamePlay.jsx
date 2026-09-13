@@ -321,15 +321,14 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         </button>
       </div>
 
-      {history.isViewingHistory ? (
-        <div className="game-status-banner reviewing">
-          Reviewing move {history.currentIndex} of {history.liveIndex}
-        </div>
-      ) : (
-        <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor={myColor} />
-      )}
-
       <div className="board-wrap custom-play-board">
+        {history.isViewingHistory ? (
+          <div className="game-status-banner reviewing">
+            Reviewing move {history.currentIndex} of {history.liveIndex}
+          </div>
+        ) : (
+          <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor={myColor} />
+        )}
         <Chessboard options={options} />
       </div>
 
