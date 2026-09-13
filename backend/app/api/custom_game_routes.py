@@ -99,14 +99,26 @@ def _mirror_current_mimic_type(game: store.CustomGame, mirror_owner_color: chess
     return game.black_last_moved_type if mirror_owner_color == chess.WHITE else game.white_last_moved_type
 
 
-def _mirror_threat_squares(board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType) -> set[chess.Square]:
+def _mirror_current_mimic_is_hydra(game: store.CustomGame, mirror_owner_color: chess.Color) -> bool:
+    """Companion to _mirror_current_mimic_type: True when the opponent's
+    last move (whatever set that KNIGHT-typed field) was specifically a
+    Hydra move, so execute_mirror_move/threat-square code know a Hydra's
+    ring-extra squares are in play, not just a plain Knight/Archer move."""
+    return game.black_last_moved_was_hydra if mirror_owner_color == chess.WHITE else game.white_last_moved_was_hydra
+
+
+def _mirror_threat_squares(
+    board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType, mimic_is_hydra: bool = False
+) -> set[chess.Square]:
     """Squares a Mirror currently threatens, given it's mimicking
     mimic_type. King mimicry is pure geometry (mirroring the Wizard/Archer
     king-step threat above); every other type reuses python-chess's own
     board.attacks() on a scratch copy with the Mirror's real Bishop
     temporarily swapped for the mimicked type - correctly blocked by
     whatever's actually on the board, and correctly excluding a Pawn's
-    forward (non-attacking) push."""
+    forward (non-attacking) push. mimic_is_hydra additionally layers on a
+    Hydra's ring-extra squares (see _extra_threat_squares), invisible to
+    board.attacks() the same way they're invisible to board.legal_moves."""
     if mimic_type == chess.KING:
         return set(rules.offset_squares(mirror_square, rules.KING_STEP_OFFSETS))
     piece = board.piece_at(mirror_square)
@@ -114,7 +126,10 @@ def _mirror_threat_squares(board: chess.Board, mirror_square: chess.Square, mimi
         return set()
     scratch = board.copy(stack=False)
     scratch.set_piece_at(mirror_square, chess.Piece(mimic_type, piece.color))
-    return set(scratch.attacks(mirror_square))
+    squares = set(scratch.attacks(mirror_square))
+    if mimic_is_hydra and mimic_type == chess.KNIGHT:
+        squares.update(rules.offset_squares(mirror_square, rules.HYDRA_RING_EXTRA_OFFSETS))
+    return squares
 
 
 def _extra_threat_squares(game: store.CustomGame, attacker_color: chess.Color) -> set[chess.Square]:
@@ -152,8 +167,9 @@ def _extra_threat_squares(game: store.CustomGame, attacker_color: chess.Color) -
     if mirror_squares:
         mimic_type = _mirror_current_mimic_type(game, attacker_color)
         if mimic_type is not None:
+            mimic_is_hydra = _mirror_current_mimic_is_hydra(game, attacker_color)
             for mirror_square in mirror_squares:
-                squares.update(_mirror_threat_squares(game.board, mirror_square, mimic_type))
+                squares.update(_mirror_threat_squares(game.board, mirror_square, mimic_type, mimic_is_hydra))
 
     return squares
 
@@ -203,6 +219,8 @@ def _scratch_game_after(
         # over unchanged - see _mirror_current_mimic_type.
         white_last_moved_type=game.white_last_moved_type,
         black_last_moved_type=game.black_last_moved_type,
+        white_last_moved_was_hydra=game.white_last_moved_was_hydra,
+        black_last_moved_was_hydra=game.black_last_moved_was_hydra,
     )
     _update_dragon_tracking(scratch, mover_color, from_square, to_square)
     _update_wizard_tracking(scratch, mover_color, from_square, to_square)
@@ -305,13 +323,15 @@ def _cyclops_has_special_capture_move(game: store.CustomGame, cyclops_square: ch
 
 
 def _mirror_candidate_destinations(
-    board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType
+    board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType, mimic_is_hydra: bool = False
 ) -> set[chess.Square]:
     """Every square the Mirror could try moving to this turn, given it's
     mimicking mimic_type - king-step geometry for King, otherwise every
     destination python-chess's own legal-move generator would allow for the
     mimicked type on a scratch copy (the same relabel trick
-    rules.execute_mirror_move validates an actual move with)."""
+    rules.execute_mirror_move validates an actual move with). mimic_is_hydra
+    layers on a Hydra's ring-extra squares the same way _mirror_threat_squares
+    does, so escape/legal-move search doesn't miss them either."""
     if mimic_type == chess.KING:
         return set(rules.offset_squares(mirror_square, rules.KING_STEP_OFFSETS))
     piece = board.piece_at(mirror_square)
@@ -319,7 +339,10 @@ def _mirror_candidate_destinations(
         return set()
     scratch = board.copy(stack=False)
     scratch.set_piece_at(mirror_square, chess.Piece(mimic_type, piece.color))
-    return {move.to_square for move in scratch.legal_moves if move.from_square == mirror_square}
+    destinations = {move.to_square for move in scratch.legal_moves if move.from_square == mirror_square}
+    if mimic_is_hydra and mimic_type == chess.KNIGHT:
+        destinations.update(rules.offset_squares(mirror_square, rules.HYDRA_RING_EXTRA_OFFSETS))
+    return destinations
 
 
 def _mirror_has_a_move(game: store.CustomGame, mirror_square: chess.Square, color: chess.Color) -> bool:
@@ -331,8 +354,9 @@ def _mirror_has_a_move(game: store.CustomGame, mirror_square: chess.Square, colo
     mimic_type = _mirror_current_mimic_type(game, color)
     if mimic_type is None:
         return False
+    mimic_is_hydra = _mirror_current_mimic_is_hydra(game, color)
     board = game.board
-    for dest in _mirror_candidate_destinations(board, mirror_square, mimic_type):
+    for dest in _mirror_candidate_destinations(board, mirror_square, mimic_type, mimic_is_hydra):
         target = board.piece_at(dest)
         if target is not None and target.color == color:
             continue
@@ -349,8 +373,7 @@ def _archer_has_escape(board: chess.Board, game: store.CustomGame, archer_square
     square, which _compute_status must NOT trust as an escape - so this is
     the source of truth for what the Archer can actually still do."""
     for dest in rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS):
-        target = board.piece_at(dest)
-        if target is not None and target.color == color:
+        if board.piece_at(dest) is not None:  # move-only - never a capture, see execute_archer_move
             continue
         if _move_keeps_king_safe(game, chess.Move(archer_square, dest), color):
             return True
@@ -475,8 +498,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
     archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
     for archer_square in archer_squares:
         for dest in rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS):
-            target = board.piece_at(dest)
-            if target is not None and target.color == color:
+            if board.piece_at(dest) is not None:  # move-only - never a capture, see execute_archer_move
                 continue
             if _move_keeps_king_safe(game, chess.Move(archer_square, dest), color):
                 return archer_square, dest, False
@@ -501,8 +523,9 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
     mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
     mimic_type = _mirror_current_mimic_type(game, color)
     if mimic_type is not None:
+        mimic_is_hydra = _mirror_current_mimic_is_hydra(game, color)
         for mirror_square in mirror_squares:
-            for dest in _mirror_candidate_destinations(board, mirror_square, mimic_type):
+            for dest in _mirror_candidate_destinations(board, mirror_square, mimic_type, mimic_is_hydra):
                 target = board.piece_at(dest)
                 if target is not None and target.color == color:
                     continue
@@ -555,6 +578,8 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         black_mirror_squares=_square_names(game.black_mirror_squares),
         white_last_moved_type=_piece_letter_or_none(game.white_last_moved_type),
         black_last_moved_type=_piece_letter_or_none(game.black_last_moved_type),
+        white_last_moved_was_hydra=game.white_last_moved_was_hydra,
+        black_last_moved_was_hydra=game.black_last_moved_was_hydra,
         action_log=list(game.action_log),
     )
 
@@ -641,15 +666,20 @@ def _update_mirror_tracking(game: store.CustomGame, mover_color: bool, from_squa
     opponent_squares.discard(to_square)
 
 
-def _update_last_moved_type(game: store.CustomGame, mover_color: bool, moved_type: Optional[chess.PieceType]) -> None:
+def _update_last_moved_type(
+    game: store.CustomGame, mover_color: bool, moved_type: Optional[chess.PieceType], was_hydra: bool = False
+) -> None:
     """Records the base type mover_color just moved, for the OPPONENT's
     Mirror (if any) to read on its own next turn - see
-    _mirror_current_mimic_type. Rolled back in _apply_move exactly like the
-    other tracking fields if the move turns out to be unsafe."""
+    _mirror_current_mimic_type/_mirror_current_mimic_is_hydra. Rolled back in
+    _apply_move exactly like the other tracking fields if the move turns out
+    to be unsafe."""
     if mover_color == chess.WHITE:
         game.white_last_moved_type = moved_type
+        game.white_last_moved_was_hydra = was_hydra
     else:
         game.black_last_moved_type = moved_type
+        game.black_last_moved_was_hydra = was_hydra
 
 
 def _apply_move(
@@ -667,16 +697,6 @@ def _apply_move(
     it. Raises HTTPException or rules.IllegalMoveError on invalid input."""
     board = game.board
 
-    if promotion is None:
-        piece_to_move = board.piece_at(from_square)
-        if piece_to_move is not None and piece_to_move.piece_type == chess.PAWN and chess.square_rank(to_square) in (0, 7):
-            # No promotion-choice UI yet - auto-queen, same as most casual
-            # chess apps default to. A bare Move with no promotion isn't a
-            # legal move onto the back rank at all, so without this a pawn
-            # could never actually finish promoting.
-            promotion = chess.QUEEN
-
-    move = chess.Move(from_square, to_square, promotion=promotion)
     dragon_square = game.white_dragon_square if mover_color == chess.WHITE else game.black_dragon_square
     wizard_squares = game.white_wizard_squares if mover_color == chess.WHITE else game.black_wizard_squares
     archer_squares = game.white_archer_squares if mover_color == chess.WHITE else game.black_archer_squares
@@ -688,14 +708,40 @@ def _apply_move(
     is_hydra_move = from_square in hydra_squares
     is_cyclops_move = from_square in cyclops_squares
     is_mirror_move = from_square in mirror_squares
+    mirror_mimic_type = _mirror_current_mimic_type(game, mover_color) if is_mirror_move else None
+    mirror_mimic_is_hydra = _mirror_current_mimic_is_hydra(game, mover_color) if is_mirror_move else False
+
+    if promotion is None:
+        piece_to_move = board.piece_at(from_square)
+        moving_as_pawn = (piece_to_move is not None and piece_to_move.piece_type == chess.PAWN) or (
+            is_mirror_move and mirror_mimic_type == chess.PAWN
+        )
+        if moving_as_pawn and chess.square_rank(to_square) in (0, 7):
+            # No promotion-choice UI yet - auto-queen, same as most casual
+            # chess apps default to. A bare Move with no promotion isn't a
+            # legal move onto the back rank at all, so without this a pawn
+            # (or a Mirror mimicking one) could never actually finish
+            # promoting - the "couldn't move the mirror to the last rank
+            # copying a pawn" bug.
+            promotion = chess.QUEEN
+
+    move = chess.Move(from_square, to_square, promotion=promotion)
 
     # What base type mover_color is exercising THIS move, for the opponent's
     # Mirror (if any) to read on its own next turn - captured before the
     # move mutates anything. A Mirror's own move records what it mimicked,
     # not its Bishop placeholder storage.
     piece_before = board.piece_at(from_square)
-    mimic_type = _mirror_current_mimic_type(game, mover_color) if is_mirror_move else None
+    mimic_type = mirror_mimic_type
     moved_type_for_mirror = mimic_type if is_mirror_move else (piece_before.piece_type if piece_before else None)
+    # Companion to moved_type_for_mirror: was THIS move (whatever just set
+    # that field to KNIGHT) specifically a Hydra move - either the piece
+    # itself is a Hydra, or it's a Mirror that was mimicking one - so the
+    # opponent's own Mirror (if any) knows next turn whether ring-extra
+    # squares are copyable. See _mirror_current_mimic_is_hydra.
+    moved_type_for_mirror_was_hydra = moved_type_for_mirror == chess.KNIGHT and (
+        is_hydra_move or (is_mirror_move and mirror_mimic_is_hydra)
+    )
 
     # Snapshot everything that a move could mutate, so a move that turns out
     # to leave the mover's own king exposed to a threat python-chess's
@@ -717,6 +763,8 @@ def _apply_move(
         set(game.black_mirror_squares),
         game.white_last_moved_type,
         game.black_last_moved_type,
+        game.white_last_moved_was_hydra,
+        game.black_last_moved_was_hydra,
     )
 
     if shoot:
@@ -739,7 +787,7 @@ def _apply_move(
     elif is_mirror_move:
         if mimic_type is None:
             raise rules.IllegalMoveError("The Mirror has nothing to copy yet")
-        rules.execute_mirror_move(board, move, mimic_type)
+        rules.execute_mirror_move(board, move, mimic_type, mirror_mimic_is_hydra)
         log_entry = f"{from_square_str}-{to_square_str}: Mirror"
     elif is_archer_move:
         rules.execute_archer_move(board, move)
@@ -754,7 +802,7 @@ def _apply_move(
     _update_hydra_tracking(game, mover_color, from_square, to_square)
     _update_cyclops_tracking(game, mover_color, from_square, to_square)
     _update_mirror_tracking(game, mover_color, from_square, to_square)
-    _update_last_moved_type(game, mover_color, moved_type_for_mirror)
+    _update_last_moved_type(game, mover_color, moved_type_for_mirror, moved_type_for_mirror_was_hydra)
 
     if _in_check(game, mover_color):
         game.board = board_before
@@ -773,6 +821,8 @@ def _apply_move(
             game.black_mirror_squares,
             game.white_last_moved_type,
             game.black_last_moved_type,
+            game.white_last_moved_was_hydra,
+            game.black_last_moved_was_hydra,
         ) = tracking_before
         raise rules.IllegalMoveError("That move would leave your king in check")
 

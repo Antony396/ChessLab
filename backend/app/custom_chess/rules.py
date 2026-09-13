@@ -127,6 +127,11 @@ def execute_archer_move(board: chess.Board, move: chess.Move) -> None:
     That real L-shaped "knight move" python-chess would happily validate for
     it is repurposed entirely for shoot() below, so this never consults
     board.legal_moves at all.
+
+    Move-only, never a capture - king-step relocation can't be used to take
+    a piece (an enemy king included), whether by rule or just by accident of
+    dropping onto an occupied square: shooting (a knight's-move away,
+    non-king only) is the sole way an Archer captures.
     """
     piece = board.piece_at(move.from_square)
     if piece is None or piece.piece_type != chess.KNIGHT:
@@ -135,8 +140,8 @@ def execute_archer_move(board: chess.Board, move: chess.Move) -> None:
         raise IllegalMoveError("An Archer can only move one square in any direction")
 
     target = board.piece_at(move.to_square)
-    if target is not None and target.color == piece.color:
-        raise IllegalMoveError("That square is occupied by your own piece")
+    if target is not None:
+        raise IllegalMoveError("An Archer can only move onto an empty square - shoot to capture")
 
     scratch = board.copy(stack=False)
     scratch.remove_piece_at(move.from_square)
@@ -280,7 +285,9 @@ def execute_cyclops_move(board: chess.Board, move: chess.Move) -> None:
     board.turn = not board.turn
 
 
-def execute_mirror_move(board: chess.Board, move: chess.Move, mimic_piece_type: chess.PieceType) -> None:
+def execute_mirror_move(
+    board: chess.Board, move: chess.Move, mimic_piece_type: chess.PieceType, mimic_is_hydra: bool = False
+) -> None:
     """A Mirror moves exactly like whatever base piece type
     (custom_game_routes.py resolves this down to one of the six standard
     types first - see its design note) the opponent most recently moved.
@@ -292,29 +299,67 @@ def execute_mirror_move(board: chess.Board, move: chess.Move, mimic_piece_type: 
     that trick (a second King would corrupt python-chess's own check
     detection) so it's validated with the Wizard's scratch-board technique
     instead.
+
+    mimic_is_hydra additionally flags "the Knight being mimicked was
+    specifically a Hydra" - the relabel trick alone only ever validates a
+    *plain* Knight move, since board.legal_moves has no idea a Hydra's
+    ring-extra (straight-two/diagonal-two) squares exist at all. Without
+    this, a Mirror could copy the knight-shaped third of a Hydra's last
+    move but never the other two thirds, which is exactly the "couldn't
+    copy a Hydra in some cases" bug this fixes - reuses the same
+    ring-extra-or-legal check execute_hydra_move itself does.
     """
     piece = board.piece_at(move.from_square)
     if piece is None or piece.piece_type != chess.BISHOP:
         raise IllegalMoveError("That square doesn't hold a Mirror")
+    color = piece.color
 
     if mimic_piece_type == chess.KING:
         if not is_king_step(move.from_square, move.to_square):
             raise IllegalMoveError("That is not a legal Mirror move")
         target = board.piece_at(move.to_square)
-        if target is not None and target.color == piece.color:
+        if target is not None and target.color == color:
             raise IllegalMoveError("That square is occupied by your own piece")
         scratch = board.copy(stack=False)
         scratch.remove_piece_at(move.from_square)
         scratch.set_piece_at(move.to_square, piece)
-        if leaves_own_king_in_check(scratch, piece.color):
+        if leaves_own_king_in_check(scratch, color):
             raise IllegalMoveError("That move would leave your king in check")
         board.push(move)
         return
 
-    color = piece.color
+    if mimic_piece_type == chess.KNIGHT and mimic_is_hydra:
+        board.set_piece_at(move.from_square, chess.Piece(chess.KNIGHT, color))
+        is_legal_as_knight = move in board.legal_moves
+        board.set_piece_at(move.from_square, piece)  # always restore Bishop representation
+        if is_legal_as_knight:
+            board.push(move)
+            return
+        if not is_hydra_ring_extra(move.from_square, move.to_square):
+            raise IllegalMoveError("That is not a legal Mirror move")
+        target = board.piece_at(move.to_square)
+        if target is not None and target.color == color:
+            raise IllegalMoveError("That square is occupied by your own piece")
+        scratch = board.copy(stack=False)
+        scratch.remove_piece_at(move.from_square)
+        scratch.set_piece_at(move.to_square, piece)
+        if leaves_own_king_in_check(scratch, color):
+            raise IllegalMoveError("That move would leave your king in check")
+        board.push(move)
+        return
+
     board.set_piece_at(move.from_square, chess.Piece(mimic_piece_type, color))
     is_legal_as_mimic = move in board.legal_moves
     board.set_piece_at(move.from_square, piece)  # always restore Bishop representation
     if not is_legal_as_mimic:
         raise IllegalMoveError("That is not a legal Mirror move")
-    board.push(move)
+    # A Pawn-mimicking move to the back rank needs move.promotion set for the
+    # relabeled-Pawn legality check just above to match a real legal move at
+    # all - but the Mirror itself is still a Bishop, and python-chess's own
+    # push() applies move.promotion to WHATEVER piece is actually at
+    # from_square, promotion-eligible or not (it doesn't re-check piece
+    # type). Pushed as-is, the Mirror would be silently replaced by a real
+    # Queen, permanently losing its Mirror-ness. Strip the promotion before
+    # actually applying the move so the Bishop just relocates, exactly like
+    # every other mimicked type.
+    board.push(chess.Move(move.from_square, move.to_square) if move.promotion else move)

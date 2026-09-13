@@ -157,10 +157,12 @@ export function tryOptimisticFen(
     promotion = "q",
     isDragonSquare,
     isWizardSquare,
+    isArcherSquare,
     isHydraSquare,
     isCyclopsSquare,
     isMirrorSquare,
     mirrorMimicType,
+    mirrorMimicIsHydra,
     shoot,
   } = {}
 ) {
@@ -187,6 +189,9 @@ export function tryOptimisticFen(
   if (isDragonSquare && knightShapeDestinations(chess, from, { requireEnemy: false }).includes(to)) {
     return applyRelocateAndCapture(fen, from, to);
   }
+  if (isArcherSquare && archerRelocateDestinations(chess, from).includes(to)) {
+    return applyRelocateAndCapture(fen, from, to);
+  }
   if (isWizardSquare && kingStepDestinations(chess, from).includes(to)) {
     return applyRelocateAndCapture(fen, from, to);
   }
@@ -200,7 +205,11 @@ export function tryOptimisticFen(
     }
     return null;
   }
-  if (isMirrorSquare && mirrorMimicType && mirrorMimicDestinations(chess, from, mirrorMimicType).includes(to)) {
+  if (
+    isMirrorSquare &&
+    mirrorMimicType &&
+    mirrorMimicDestinations(chess, from, mirrorMimicType, mirrorMimicIsHydra).includes(to)
+  ) {
     return applyRelocateAndCapture(fen, from, to);
   }
 
@@ -213,6 +222,26 @@ function kingStepDestinations(chess, fromSquare) {
     const occupant = chess.get(square);
     return !occupant || occupant.color !== mover.color;
   });
+}
+
+// An Archer's king-step relocate is move-only - unlike the Wizard/Mirror's
+// own king-step modes, it can never capture (an enemy king included), so
+// this can't just reuse kingStepDestinations - see execute_archer_move.
+function archerRelocateDestinations(chess, fromSquare) {
+  return offsetDestinations(KING_STEP_OFFSETS, fromSquare).filter((square) => !chess.get(square));
+}
+
+// Whether dropping an Archer from archerSquare onto targetSquare should be
+// treated as a shoot (a knight's-move away, capturing without relocating)
+// rather than a king-step relocate - inferred from the target square itself
+// now that there's no separate "arm the shot" toggle to ask instead.
+export function isArcherShootMove(fen, archerSquare, targetSquare) {
+  try {
+    const chess = new Chess(fen);
+    return knightShapeDestinations(chess, archerSquare, { requireEnemy: true }).includes(targetSquare);
+  } catch {
+    return false;
+  }
 }
 
 function knightShapeDestinations(chess, fromSquare, { requireEnemy }) {
@@ -249,19 +278,29 @@ function cyclopsSpecialCaptureSquare(fromSquare, color) {
 // custom_game_routes.py's _mirror_candidate_destinations - built by loading
 // a scratch chess.js position with fromSquare's real piece swapped for
 // mimicType (chess.js has no "relabel and ask" API of its own, so this
-// reconstructs the FEN with that one square edited instead).
-function mirrorMimicDestinations(chess, fromSquare, mimicType) {
+// reconstructs the FEN with that one square edited instead). mimicIsHydra
+// layers on a Hydra's ring-extra squares when mimicking a Knight - chess.js's
+// relabel-to-Knight trick alone only ever sees the plain knight-shaped third
+// of a Hydra's ring, the same gap _mirror_candidate_destinations closes on
+// the backend (the "couldn't copy a Hydra in some cases" bug).
+function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra) {
   if (mimicType === "k") return kingStepDestinations(chess, fromSquare);
 
   const mover = chess.get(fromSquare);
   const scratch = new Chess(chess.fen());
   scratch.remove(fromSquare);
   scratch.put({ type: mimicType, color: mover.color }, fromSquare);
+  let destinations;
   try {
-    return scratch.moves({ square: fromSquare, verbose: true }).map((m) => m.to);
+    destinations = scratch.moves({ square: fromSquare, verbose: true }).map((m) => m.to);
   } catch {
-    return [];
+    destinations = [];
   }
+  if (mimicType === "n" && mimicIsHydra) {
+    const ringExtra = hydraRingExtraDestinations(chess, fromSquare);
+    destinations = [...new Set([...destinations, ...ringExtra])];
+  }
+  return destinations;
 }
 
 // Returns [{ square, capture, shoot }] - capture flags whether that
@@ -277,7 +316,7 @@ export function computeLegalDestinations({
   isCyclopsSquare,
   isMirrorSquare,
   mirrorMimicType, // one of "q"/"r"/"b"/"n"/"p"/"k", or null/undefined if nothing to mimic yet
-  shootArmed,
+  mirrorMimicIsHydra,
 }) {
   let chess;
   try {
@@ -287,15 +326,21 @@ export function computeLegalDestinations({
   }
 
   if (isArcherSquare) {
-    const destinations = shootArmed
-      ? knightShapeDestinations(chess, square, { requireEnemy: true })
-      : kingStepDestinations(chess, square);
-    return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: shootArmed }));
+    // No more "arm the shot" toggle - selecting an Archer always shows both
+    // its move-only king-step destinations (plain dots) and its knight's-
+    // move shoot targets (red rings) at once; which one a drop actually
+    // performs is inferred from the target square, not a pre-armed mode.
+    const moveDestinations = archerRelocateDestinations(chess, square);
+    const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true });
+    return [
+      ...moveDestinations.map((to) => ({ square: to, capture: false, shoot: false })),
+      ...shootDestinations.map((to) => ({ square: to, capture: true, shoot: true })),
+    ];
   }
 
   if (isMirrorSquare) {
     if (!mirrorMimicType) return [];
-    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType);
+    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra);
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
 

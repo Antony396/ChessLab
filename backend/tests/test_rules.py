@@ -91,10 +91,13 @@ def test_archer_relocate_rejects_the_l_shaped_knight_move():
         execute_archer_move(board, chess.Move.from_uci("a1b3"))
 
 
-def test_archer_relocate_can_capture_by_moving_onto_an_enemy_piece():
+def test_archer_relocate_cannot_capture_an_enemy_piece():
+    # Move-only: relocating is never a capture, even of an ordinary enemy
+    # piece - shooting (a knight's-move away) is the sole way an Archer
+    # takes anything, so it can never accidentally take a King this way.
     board = chess.Board(fen="7k/8/8/8/8/8/1p6/N6K w - - 0 1")
-    execute_archer_move(board, chess.Move.from_uci("a1b2"))
-    assert board.piece_at(chess.B2) == chess.Piece(chess.KNIGHT, chess.WHITE)
+    with pytest.raises(IllegalMoveError):
+        execute_archer_move(board, chess.Move.from_uci("a1b2"))
 
 
 def test_archer_relocate_rejects_move_that_exposes_own_king():

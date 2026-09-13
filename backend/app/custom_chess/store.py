@@ -44,6 +44,14 @@ class CustomGame:
     # reading the OPPONENT's copy of this field - see custom_game_routes.py.
     white_last_moved_type: Optional[chess.PieceType] = None
     black_last_moved_type: Optional[chess.PieceType] = None
+    # True when white_last_moved_type/black_last_moved_type == KNIGHT because
+    # a Hydra moved (as opposed to a plain Knight or an Archer's knight-shape
+    # shoot/relocate) - a Mirror mimicking that move needs to know this,
+    # since a Hydra's ring-extra squares are legal for it to copy but
+    # board.legal_moves has no idea they exist (see execute_mirror_move's
+    # mimic_is_hydra parameter).
+    white_last_moved_was_hydra: bool = False
+    black_last_moved_was_hydra: bool = False
     vs_ai: bool = False
     status: str = "in_progress"
     action_log: list[str] = field(default_factory=list)

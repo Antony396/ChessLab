@@ -83,7 +83,6 @@
   font-family: inherit;
 }
 
-.shoot-toggle-btn,
 .custom-play-toolbar button {
   font: inherit;
   font-weight: 600;
@@ -97,7 +96,6 @@
   transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
 }
 
-.shoot-toggle-btn:hover:not(:disabled),
 .custom-play-toolbar button:hover {
   border-color: var(--hc-border-strong);
   background: var(--hc-surface-strong);
@@ -185,30 +183,6 @@
   text-transform: uppercase;
   font-size: 15px;
   letter-spacing: 0.8px;
-}
-
-.shoot-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: center;
-  margin: 12px 0;
-}
-
-.shoot-toggle-btn.active {
-  background: linear-gradient(160deg, var(--hc-gold-strong), var(--hc-gold));
-  color: var(--hc-bg-edge);
-  border-color: var(--hc-gold-dark);
-}
-
-.shoot-toggle-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.shoot-toggle-hint {
-  font-size: 12px;
-  color: var(--hc-text);
 }
 
 .custom-play-status {

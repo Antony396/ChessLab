@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
-import { computeLegalDestinations, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
+import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { playMoveSound } from "./sound";
 
@@ -27,7 +27,6 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   // needs to replace White's King art.
   const equippedSkin = useEquippedSkin();
   const whiteKingSkinSrc = KING_SKINS[equippedSkin].whiteTeamSrc;
-  const [shootArmed, setShootArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
@@ -40,24 +39,23 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const whiteHydraSquares = gameState.white_hydra_squares || [];
   const whiteCyclopsSquares = gameState.white_cyclops_squares || [];
   const whiteMirrorSquares = gameState.white_mirror_squares || [];
-  const hasArchers = whiteArcherSquares.length > 0;
   // White's Mirror mimics whatever BLACK (its opponent) last moved.
   const mirrorMimicType = gameState.black_last_moved_type ? gameState.black_last_moved_type.toLowerCase() : null;
+  const mirrorMimicIsHydra = gameState.black_last_moved_was_hydra;
 
   function showLegalDestinationsFor(square) {
-    const isArcherSquare = whiteArcherSquares.includes(square);
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
         square,
         isDragonSquare: square === gameState.white_dragon_square,
         isWizardSquare: whiteWizardSquares.includes(square),
-        isArcherSquare,
+        isArcherSquare: whiteArcherSquares.includes(square),
         isHydraSquare: whiteHydraSquares.includes(square),
         isCyclopsSquare: whiteCyclopsSquares.includes(square),
         isMirrorSquare: whiteMirrorSquares.includes(square),
         mirrorMimicType,
-        shootArmed: shootArmed && isArcherSquare,
+        mirrorMimicIsHydra,
       })
     );
   }
@@ -88,7 +86,11 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     if (!targetSquare || moving || isOver) return false;
     if (piece.pieceType[0] !== "w") return false; // the computer plays black
 
-    const shoot = shootArmed && whiteArcherSquares.includes(sourceSquare);
+    // No more "arm the shot" toggle - an Archer drop is a shoot exactly
+    // when the target is one of its knight's-move capture squares, and a
+    // relocate otherwise (tryOptimisticFen/the server independently reject
+    // anything that's neither).
+    const shoot = whiteArcherSquares.includes(sourceSquare) && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
 
     // Show the player's own move immediately rather than waiting on the
     // round trip - see tryOptimisticFen's own comment for exactly which
@@ -106,10 +108,12 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
       isDragonSquare: sourceSquare === gameState.white_dragon_square,
       isWizardSquare: whiteWizardSquares.includes(sourceSquare),
+      isArcherSquare: whiteArcherSquares.includes(sourceSquare),
       isHydraSquare: whiteHydraSquares.includes(sourceSquare),
       isCyclopsSquare: whiteCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: whiteMirrorSquares.includes(sourceSquare),
       mirrorMimicType,
+      mirrorMimicIsHydra,
       shoot,
     });
     if (optimisticFen) {
@@ -132,7 +136,6 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     })
       .then((afterPlayerMove) => {
         setGameState(afterPlayerMove);
-        setShootArmed(false);
         if (afterPlayerMove.vs_ai && afterPlayerMove.status === "in_progress" && afterPlayerMove.turn === "black") {
           setAiThinking(true);
           return postAiMove(afterPlayerMove.id).then((afterAiMove) => {
@@ -232,18 +235,6 @@ export default function CustomGamePlay({ initialGame, onExit }) {
 
       <div className="board-wrap custom-play-board">
         <Chessboard options={options} />
-      </div>
-
-      <div className="shoot-toggle-row">
-        <button
-          type="button"
-          className={`shoot-toggle-btn${shootArmed ? " active" : ""}`}
-          disabled={!hasArchers || isOver || moving}
-          onClick={() => setShootArmed((v) => !v)}
-        >
-          {shootArmed ? "Shoot armed — drag your Archer to its target" : "Aim Archer Shot"}
-        </button>
-        {!hasArchers && <span className="shoot-toggle-hint">No Archer in your deck</span>}
       </div>
 
       {error && <div className="error-banner">{error}</div>}

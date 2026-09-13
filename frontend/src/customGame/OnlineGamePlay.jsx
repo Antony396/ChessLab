@@ -3,7 +3,7 @@ import { Chessboard } from "react-chessboard";
 import { onlineGameWsUrl, postOnlineMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
-import { computeLegalDestinations, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
+import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { playMoveSound } from "./sound";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
@@ -20,7 +20,6 @@ const STATUS_LABEL = {
 export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }) {
   const [gameState, setGameState] = useState(initialGame);
   const [connected, setConnected] = useState(false);
-  const [shootArmed, setShootArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState(null);
   const [legalDestinations, setLegalDestinations] = useState([]);
@@ -42,10 +41,11 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const myHydraSquares = (myColor === "white" ? gameState.white_hydra_squares : gameState.black_hydra_squares) || [];
   const myCyclopsSquares = (myColor === "white" ? gameState.white_cyclops_squares : gameState.black_cyclops_squares) || [];
   const myMirrorSquares = (myColor === "white" ? gameState.white_mirror_squares : gameState.black_mirror_squares) || [];
-  const hasArchers = myArcherSquares.length > 0;
   // My Mirror mimics whatever my OPPONENT last moved.
   const opponentLastMovedType = myColor === "white" ? gameState.black_last_moved_type : gameState.white_last_moved_type;
   const mirrorMimicType = opponentLastMovedType ? opponentLastMovedType.toLowerCase() : null;
+  const mirrorMimicIsHydra =
+    myColor === "white" ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
 
   // Both players read every state update off the same broadcast, rather
   // than the mover trusting its own POST response and the opponent trusting
@@ -100,19 +100,18 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   }, [gameId]);
 
   function showLegalDestinationsFor(square) {
-    const isArcherSquare = myArcherSquares.includes(square);
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
         square,
         isDragonSquare: square === myDragonSquare,
         isWizardSquare: myWizardSquares.includes(square),
-        isArcherSquare,
+        isArcherSquare: myArcherSquares.includes(square),
         isHydraSquare: myHydraSquares.includes(square),
         isCyclopsSquare: myCyclopsSquares.includes(square),
         isMirrorSquare: myMirrorSquares.includes(square),
         mirrorMimicType,
-        shootArmed: shootArmed && isArcherSquare,
+        mirrorMimicIsHydra,
       })
     );
   }
@@ -144,7 +143,11 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     if (!targetSquare || moving || isOver || !isMyTurn) return false;
     if (piece.pieceType[0] !== myPrefix) return false;
 
-    const shoot = shootArmed && myArcherSquares.includes(sourceSquare);
+    // No more "arm the shot" toggle - an Archer drop is a shoot exactly
+    // when the target is one of its knight's-move capture squares, and a
+    // relocate otherwise (tryOptimisticFen/the server independently reject
+    // anything that's neither).
+    const shoot = myArcherSquares.includes(sourceSquare) && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
 
     // Show my own move immediately rather than waiting on the round trip -
     // see tryOptimisticFen's own comment for exactly which moves this
@@ -163,10 +166,12 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
       isDragonSquare: sourceSquare === myDragonSquare,
       isWizardSquare: myWizardSquares.includes(sourceSquare),
+      isArcherSquare: myArcherSquares.includes(sourceSquare),
       isHydraSquare: myHydraSquares.includes(sourceSquare),
       isCyclopsSquare: myCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: myMirrorSquares.includes(sourceSquare),
       mirrorMimicType,
+      mirrorMimicIsHydra,
       shoot,
     });
     if (optimisticFen) {
@@ -189,7 +194,6 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       to_square: targetSquare,
       shoot,
     })
-      .then(() => setShootArmed(false))
       .catch((e) => {
         pendingOwnMoveRef.current = false; // never landed - don't suppress the next real broadcast
         setError(e.message);
@@ -283,18 +287,6 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
 
       <div className="board-wrap custom-play-board">
         <Chessboard options={options} />
-      </div>
-
-      <div className="shoot-toggle-row">
-        <button
-          type="button"
-          className={`shoot-toggle-btn${shootArmed ? " active" : ""}`}
-          disabled={!hasArchers || isOver || moving || !isMyTurn}
-          onClick={() => setShootArmed((v) => !v)}
-        >
-          {shootArmed ? "Shoot armed — drag your Archer to its target" : "Aim Archer Shot"}
-        </button>
-        {!hasArchers && <span className="shoot-toggle-hint">No Archer in your deck</span>}
       </div>
 
       {error && <div className="error-banner">{error}</div>}

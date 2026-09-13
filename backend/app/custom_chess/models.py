@@ -60,6 +60,13 @@ class CustomGameState(BaseModel):
     # move hints for a Mirror square without duplicating the tracking logic.
     white_last_moved_type: Optional[str] = None
     black_last_moved_type: Optional[str] = None
+    # Companion flags: True when the corresponding *_last_moved_type above is
+    # "N" specifically because a Hydra moved (not a plain Knight or an
+    # Archer's knight-shape shoot/relocate) - lets the frontend's own Mirror
+    # legal-move-hint logic know a Hydra's ring-extra squares are copyable
+    # too, mirroring the backend's _mirror_current_mimic_is_hydra.
+    white_last_moved_was_hydra: bool = False
+    black_last_moved_was_hydra: bool = False
     action_log: list[str]
 
 
