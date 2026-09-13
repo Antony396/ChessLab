@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 
@@ -331,6 +332,21 @@ async def simul_room_ws(websocket: WebSocket, room_id: str):
 
 # --- Live presence: sessions, dorm-visiting, movement relay ----------------
 
+CHAT_MAX_LENGTH = 200
+
+
+def _sanitize_chat_text(raw: Optional[str]) -> Optional[str]:
+    """Trims a dorm-chat message and caps its length; returns None for
+    anything blank so callers can just skip broadcasting it. A pure
+    function on purpose - lets this get unit-tested directly without
+    spinning up any WebSocket at all."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    return text[:CHAT_MAX_LENGTH]
+
 
 @router.websocket("/presence/ws")
 async def presence_ws(websocket: WebSocket, token: str):
@@ -404,6 +420,21 @@ async def presence_ws(websocket: WebSocket, token: str):
                         "skin": conn.skin,
                     },
                 )
+
+            elif msg_type == "chat":
+                # A speech-bubble message, scoped to whoever's currently in
+                # the same dorm (naturally follows a visit, same as
+                # movement/dorm-snapshot above - no special-casing needed).
+                # The sender shows their own message locally the instant
+                # they send it (see the frontend), same pattern as their
+                # own avatar's movement, so this only relays to everyone
+                # ELSE.
+                text = _sanitize_chat_text(msg.get("text"))
+                if text:
+                    await _broadcast_to_dorm(
+                        conn.viewing_dorm_of,
+                        {"type": "chat", "user_id": conn.user_id, "username": conn.username, "text": text},
+                    )
 
             elif msg_type == "leave":
                 old_dorm = conn.viewing_dorm_of

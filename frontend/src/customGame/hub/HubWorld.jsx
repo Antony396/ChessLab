@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AvatarController from "./AvatarController";
 import InteractiveTrigger from "./InteractiveTrigger";
 import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, isInsideRoom } from "./useHubState";
 import { KING_SKINS, useEquippedSkin, setEquippedSkin } from "../skinStore";
+import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
+import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
 
 function FriendsIcon() {
@@ -19,15 +21,48 @@ function FriendsIcon() {
 // A read-only avatar for someone else currently in this dorm - no input
 // handling, no click-to-move, just rendered at their last-known position
 // (see social/usePresence.js).
-function RemoteAvatar({ occupant }) {
+function RemoteAvatar({ occupant, bubbleText }) {
   const skin = KING_SKINS[occupant.skin] || KING_SKINS.classic;
   const style = { transform: `translate(${occupant.x * TILE_SIZE}px, ${occupant.y * TILE_SIZE}px)` };
   return (
     <div className={`hub-avatar facing-${occupant.facing || "down"} remote`} style={style}>
+      {bubbleText && <SpeechBubble text={bubbleText} />}
       <img src={skin.src} alt="" className="hub-avatar-img" draggable={false} />
       <div className="hub-avatar-shadow" />
       <span className="hub-avatar-nameplate">{occupant.username}</span>
     </div>
+  );
+}
+
+// The always-visible chat input, docked to the bottom of the room. Enter
+// sends (and clears the field); Escape blurs without sending. Movement's
+// own keydown listeners (AvatarController's WASD/arrows, and the "E to
+// interact" one below) already skip acting while an <input>/<textarea> has
+// focus, so typing here never also walks the avatar around or opens the
+// pedestal overlay.
+function ChatBar({ onSend }) {
+  const [value, setValue] = useState("");
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter") {
+      const text = value.trim();
+      if (text) onSend(text);
+      setValue("");
+    } else if (e.key === "Escape") {
+      e.currentTarget.blur();
+    }
+  }
+
+  return (
+    <input
+      type="text"
+      className="hub-chat-input"
+      placeholder="Say something… (Enter to send)"
+      value={value}
+      maxLength={200}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={handleKeyDown}
+    />
   );
 }
 
@@ -192,13 +227,32 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
   const equippedSkin = useEquippedSkin();
   const skin = KING_SKINS[equippedSkin];
   const isVisiting = Boolean(visiting);
+  // My own chat bubble - never comes back over the wire (presence_ws never
+  // echoes a sender's own message), so it's shown locally the instant I
+  // send it, same pattern as my own avatar's movement.
+  const [myBubble, setMyBubble] = useState(null); // {text, key} | null
+  const myBubbleTimerRef = useRef(null);
+
+  function handleSendChat(text) {
+    presence?.sendChat(text);
+    const key = `${Date.now()}-${Math.random()}`;
+    setMyBubble({ text, key });
+    window.clearTimeout(myBubbleTimerRef.current);
+    myBubbleTimerRef.current = window.setTimeout(() => {
+      setMyBubble((prev) => (prev?.key === key ? null : prev));
+    }, CHAT_BUBBLE_DURATION_MS);
+  }
 
   // "E to interact" - the keyboard-native counterpart to clicking the
   // pedestal directly, active only while standing next to it (and only in
-  // your own dorm - see VisitingBanner above).
+  // your own dorm - see VisitingBanner above). Skipped while the chat
+  // input (or any other input/textarea) has focus, so typing the letter
+  // "e" in a message never also pops the pedestal overlay open.
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key.toLowerCase() !== "e") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!isVisiting && hub.isNearPedestal) hub.setActiveOverlay("match-queue");
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -261,19 +315,26 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
             )}
 
             {presence?.occupants.map((occupant) => (
-              <RemoteAvatar key={occupant.user_id} occupant={occupant} />
+              <RemoteAvatar
+                key={occupant.user_id}
+                occupant={occupant}
+                bubbleText={presence.chatBubbles[occupant.user_id]?.text}
+              />
             ))}
 
             <AvatarController
               position={hub.position}
               facing={hub.facing}
               isHopping={hub.isHopping}
+              bubbleText={myBubble?.text}
               skin={skin}
               tileSize={TILE_SIZE}
               onStep={hub.step}
             />
           </div>
         </div>
+
+        <ChatBar onSend={handleSendChat} />
 
         <p className="hub-hint">
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}

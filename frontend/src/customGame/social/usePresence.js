@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { presenceWsUrl } from "./api";
 
+export const CHAT_BUBBLE_DURATION_MS = 6000;
+
 // Owns the single live presence WebSocket connection for a logged-in
 // session: which dorm this browser is currently "standing in" (own by
 // default, a friend's after visit()), who else is in that same dorm right
@@ -16,7 +18,16 @@ export function usePresence(
   const [dormOwnerId, setDormOwnerId] = useState(userId);
   const [occupants, setOccupants] = useState({}); // user_id -> {username,x,y,facing,skin}
   const [connected, setConnected] = useState(false);
+  // Speech bubbles from OTHER players' chat messages - user_id -> {text,
+  // key}. `key` (a fresh value per message) is what the fade-out timeout
+  // below checks before clearing, so an in-flight timer for an older
+  // message can never wipe out a newer one that arrived in the meantime.
+  // My own sent messages aren't tracked here at all - the sender shows
+  // its own bubble locally instead (see HubWorld.jsx), since presence_ws
+  // never echoes a chat message back to its own sender.
+  const [chatBubbles, setChatBubbles] = useState({});
   const wsRef = useRef(null);
+  const chatBubbleTimersRef = useRef({});
   const onChallengeRef = useRef(onChallenge);
   const onChallengeAcceptedRef = useRef(onChallengeAccepted);
   const onChallengeDeclinedRef = useRef(onChallengeDeclined);
@@ -47,6 +58,12 @@ export function usePresence(
             const next = {};
             for (const o of msg.occupants) next[o.user_id] = o;
             setOccupants(next);
+            // Switching which dorm is on screen (my own view changed, or I
+            // just visited someone) - any bubble left over from whatever
+            // was showing before is now stale.
+            for (const timer of Object.values(chatBubbleTimersRef.current)) window.clearTimeout(timer);
+            chatBubbleTimersRef.current = {};
+            setChatBubbles({});
             break;
           }
           case "peer_joined":
@@ -64,7 +81,29 @@ export function usePresence(
               delete next[msg.user_id];
               return next;
             });
+            window.clearTimeout(chatBubbleTimersRef.current[msg.user_id]);
+            delete chatBubbleTimersRef.current[msg.user_id];
+            setChatBubbles((prev) => {
+              if (!(msg.user_id in prev)) return prev;
+              const next = { ...prev };
+              delete next[msg.user_id];
+              return next;
+            });
             break;
+          case "chat": {
+            const key = `${Date.now()}-${Math.random()}`;
+            setChatBubbles((prev) => ({ ...prev, [msg.user_id]: { text: msg.text, key } }));
+            window.clearTimeout(chatBubbleTimersRef.current[msg.user_id]);
+            chatBubbleTimersRef.current[msg.user_id] = window.setTimeout(() => {
+              setChatBubbles((prev) => {
+                if (prev[msg.user_id]?.key !== key) return prev;
+                const next = { ...prev };
+                delete next[msg.user_id];
+                return next;
+              });
+            }, CHAT_BUBBLE_DURATION_MS);
+            break;
+          }
           case "challenge":
             onChallengeRef.current?.(msg);
             break;
@@ -113,6 +152,16 @@ export function usePresence(
     }
   }, []);
 
+  // Never echoed back to me by the server (see presence_ws) - my own
+  // bubble is shown locally by the caller (HubWorld.jsx) the instant this
+  // is called, same pattern as sendMove's own optimistic local update.
+  const sendChat = useCallback((text) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "chat", text }));
+    }
+  }, []);
+
   const leaveDorm = useCallback(() => {
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
@@ -125,7 +174,9 @@ export function usePresence(
     dormOwnerId,
     isInOwnDorm: dormOwnerId === userId,
     occupants: Object.values(occupants),
+    chatBubbles,
     sendMove,
+    sendChat,
     visit,
     leaveDorm,
   };

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import SpeechBubble from "./SpeechBubble";
 
 const KEY_TO_DIRECTION = {
   w: "up",
@@ -15,7 +16,7 @@ const KEY_TO_DIRECTION = {
 // its current grid tile, facing the right way, hopping on every step. Pure
 // controller + view - it never touches game/session state, only the tiny
 // slice of hub state passed in as props.
-export default function AvatarController({ position, facing, isHopping, skin, tileSize, onStep }) {
+export default function AvatarController({ position, facing, isHopping, bubbleText, skin, tileSize, onStep }) {
   useEffect(() => {
     function handleKeyDown(e) {
       const direction = KEY_TO_DIRECTION[e.key.toLowerCase()];
@@ -37,6 +38,7 @@ export default function AvatarController({ position, facing, isHopping, skin, ti
 
   return (
     <div className={`hub-avatar facing-${facing}${isHopping ? " hopping" : ""}`} style={style}>
+      {bubbleText && <SpeechBubble text={bubbleText} />}
       <img src={skin.src} alt={skin.name} className="hub-avatar-img" draggable={false} />
       <div className="hub-avatar-shadow" />
     </div>
