@@ -437,6 +437,35 @@ def _side_has_a_real_move(game: store.CustomGame, color: chess.Color) -> bool:
     return False
 
 
+def _real_legal_standard_moves(game: store.CustomGame, color: chess.Color) -> set[chess.Move]:
+    """Every board.legal_moves entry for color that's ALSO safe under our
+    own true check-safety rules - the same filtering _side_has_a_real_move
+    does, except collecting every match instead of stopping at the first.
+
+    This is the actual fix for "the AI doesn't respond well to a check from
+    a hero piece": Stockfish (ai.py) can structurally never propose a
+    hero-special escape move itself (it has no concept of a Dragon's
+    knight-hop or similar), so the best it can ever do when the only real
+    threat is one of those is choose intelligently among the STANDARD moves
+    that are genuinely legal. It can only do that if it's actually given
+    that exact candidate set up front - custom_ai_move used to instead let
+    it guess blind and exclude one rejected move at a time, which wastes a
+    full engine search per illegal guess and, worse, means every one of
+    those wasted searches was picked with zero awareness the king needed
+    saving at all.
+    """
+    archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
+    mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
+    board = game.board
+    return {
+        move
+        for move in board.legal_moves
+        if move.from_square not in archer_squares
+        and move.from_square not in mirror_squares
+        and _move_keeps_king_safe(game, move, color)
+    }
+
+
 def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optional[tuple[chess.Square, chess.Square, bool]]:
     """Stockfish (see ai.py) only ever proposes a standard chess move - it
     has no idea a Dragon/Wizard/Hydra/Archer/Cyclops/Mirror can move in
@@ -1083,13 +1112,20 @@ def custom_ai_move(game_id: str):
     # a player's Dragon/Wizard/Archer is threatening its king via an extra
     # movement mode it can't see (see _extra_threat_squares) - its "best"
     # move can therefore turn out to be one _apply_move correctly rejects for
-    # ignoring that check. Rather than surfacing that as an error and
-    # stalling the game, ask again with that move excluded so it falls back
-    # to its next-best try, repeating until one actually lands. _compute_status
-    # already guarantees at least one real legal move exists here (this
-    # endpoint is only reachable while game.status == "in_progress"), so this
-    # is bounded by the position's legal move count, not open-ended.
-    excluded_moves: set[chess.Move] = set()
+    # ignoring that check. Seed the exclusion set with every standard move
+    # that's ALREADY known to be unsafe under our own rules (see
+    # _real_legal_standard_moves), so its very first search only considers
+    # genuinely legal candidates - rather than the old behavior of letting
+    # it guess blind (with zero awareness a hero-piece check even existed)
+    # and excluding one rejected move at a time, which could waste many
+    # full engine searches on a position where only a handful of moves were
+    # ever going to be legal. The loop below still retries on a further
+    # rejection - a defensive fallback for anything this filtering missed,
+    # not the primary mechanism anymore. _compute_status already guarantees
+    # at least one real legal move exists here (this endpoint is only
+    # reachable while game.status == "in_progress"), so this is bounded by
+    # the position's legal move count, not open-ended.
+    excluded_moves: set[chess.Move] = set(board.legal_moves) - _real_legal_standard_moves(game, chess.BLACK)
     log_entry: Optional[str] = None
     for _ in range(len(list(board.legal_moves)) + 1):
         try:
