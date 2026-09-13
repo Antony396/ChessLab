@@ -55,6 +55,16 @@ class CustomGame:
     vs_ai: bool = False
     status: str = "in_progress"
     action_log: list[str] = field(default_factory=list)
+    # One FEN per position the board has actually been in, oldest first,
+    # starting with the initial setup - lets the frontend's move-history
+    # back/forward navigation show the exact position after any past move
+    # without needing its own copy of the move-application logic. Hero-piece
+    # art (Dragon vs. Rook, etc.) isn't tracked historically alongside this -
+    # a reviewed position intentionally renders with plain base-type art,
+    # not a snapshot of white_dragon_square and friends at that point in
+    # time, since capturing that whole extra history isn't worth it for a
+    # read-only review feature.
+    fen_history: list[str] = field(default_factory=list)
     # Online multiplayer only (unused/None for vs_ai and the old local
     # sandbox): secret tokens proving which connected browser is allowed to
     # move which color. A CustomGame is only ever created once both sides'
@@ -146,6 +156,7 @@ def create_game(
         white_mirror_squares=white_mirror_squares or set(),
         black_mirror_squares=black_mirror_squares or set(),
         vs_ai=vs_ai,
+        fen_history=[board.fen()],
     )
     _GAMES[game.id] = game
     return game

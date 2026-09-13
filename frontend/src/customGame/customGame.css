@@ -306,6 +306,60 @@
   overflow-y: auto;
 }
 
+.action-log-entry {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.action-log-entry:hover {
+  background: var(--hc-surface-strong);
+}
+
+.action-log-entry.active {
+  background: var(--hc-gold);
+  color: var(--hc-bg-edge);
+}
+
+.move-history-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.move-history-nav button {
+  font: inherit;
+  font-weight: 700;
+  padding: 6px 14px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.move-history-nav button:not(:disabled):hover {
+  border-color: var(--hc-border-strong);
+  background: var(--hc-surface-strong);
+}
+
+.move-history-nav button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.game-status-banner.reviewing {
+  background: var(--hc-surface);
+  border: 1px solid var(--hc-border-strong);
+  color: var(--hc-text-h);
+  animation: none;
+}
+
 .hero-chess-app h2 {
   font-size: 13px;
   font-weight: 700;

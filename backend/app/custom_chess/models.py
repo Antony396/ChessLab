@@ -75,6 +75,11 @@ class CustomGameState(BaseModel):
     # banner without duplicating any of that threat-detection logic itself.
     in_check: bool = False
     action_log: list[str]
+    # One FEN per position the board has actually been in, oldest first -
+    # see CustomGame.fen_history for why hero-piece art isn't tracked
+    # historically alongside this (a reviewed past position always renders
+    # with plain base-type art).
+    fen_history: list[str] = []
 
 
 class OnlineMoveRequest(BaseModel):

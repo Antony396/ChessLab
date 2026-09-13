@@ -582,6 +582,7 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         black_last_moved_was_hydra=game.black_last_moved_was_hydra,
         in_check=_in_check(game, game.board.turn),
         action_log=list(game.action_log),
+        fen_history=list(game.fen_history),
     )
 
 
@@ -827,6 +828,7 @@ def _apply_move(
         ) = tracking_before
         raise rules.IllegalMoveError("That move would leave your king in check")
 
+    game.fen_history.append(board.fen())
     return log_entry
 
 

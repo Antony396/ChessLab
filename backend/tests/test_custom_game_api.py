@@ -50,6 +50,8 @@ def _setup_game(client, white_back_rank=None, black_back_rank=None, white_evolve
 def test_standard_move_flow_alternates_turns_and_updates_fen(client):
     game = _setup_game(client)
     game_id = game["id"]
+    # One entry already, for the starting position - see fen_history below.
+    assert game["fen_history"] == [game["fen"]]
 
     resp = client.post(
         "/api/game/custom-move",
@@ -63,6 +65,33 @@ def test_standard_move_flow_alternates_turns_and_updates_fen(client):
 
     fetched = client.get(f"/api/game/{game_id}").json()
     assert fetched["fen"] == body["fen"]
+
+
+def test_fen_history_grows_by_one_per_move_and_starts_with_the_setup_position(client):
+    # Regression coverage for the move-history back/forward navigation
+    # feature - the frontend steps through this list directly rather than
+    # re-deriving past positions itself.
+    game = _setup_game(client)
+    game_id = game["id"]
+    starting_fen = game["fen"]
+
+    after_e4 = client.post(
+        "/api/game/custom-move", json={"game_id": game_id, "from_square": "e2", "to_square": "e4"}
+    ).json()
+    assert after_e4["fen_history"] == [starting_fen, after_e4["fen"]]
+
+    after_e5 = client.post(
+        "/api/game/custom-move", json={"game_id": game_id, "from_square": "e7", "to_square": "e5"}
+    ).json()
+    assert after_e5["fen_history"] == [starting_fen, after_e4["fen"], after_e5["fen"]]
+
+    # An illegal move must never append to the history.
+    rejected = client.post(
+        "/api/game/custom-move", json={"game_id": game_id, "from_square": "a1", "to_square": "a5"}
+    )
+    assert rejected.status_code == 400
+    unchanged = client.get(f"/api/game/{game_id}").json()
+    assert unchanged["fen_history"] == after_e5["fen_history"]
 
 
 def test_standard_move_rejects_illegal_move(client):

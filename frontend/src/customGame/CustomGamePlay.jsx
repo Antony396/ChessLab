@@ -6,6 +6,7 @@ import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquare
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { playMoveSound } from "./sound";
 import GameStatusBanner from "./GameStatusBanner";
+import { useMoveHistory } from "./useMoveHistory";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -33,6 +34,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const [error, setError] = useState(null);
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
+  const history = useMoveHistory(gameState);
 
   const isOver = gameState.status !== "in_progress";
   const whiteArcherSquares = gameState.white_archer_squares || [];
@@ -75,7 +77,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   }
 
   function handlePieceDrag({ isSparePiece, square, piece }) {
-    if (isSparePiece || !square) return;
+    if (isSparePiece || !square || history.isViewingHistory) return;
     setSelectedSquare(square);
     showLegalDestinationsFor(square, piece.pieceType[0]);
   }
@@ -83,9 +85,11 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   // Previewing works for either side's pieces, and regardless of whether a
   // move is currently in flight - it's a read-only hint, not an action, so
   // it shouldn't be gated the way actually dropping a piece is (see
-  // handlePieceDrop's own guard for that).
+  // handlePieceDrop's own guard for that). Disabled while reviewing a past
+  // position though, since the hint would be computed against the LIVE
+  // gameState, not whatever position is actually on screen.
   function handleSquareClick({ piece, square }) {
-    if (isOver) return;
+    if (isOver || history.isViewingHistory) return;
     if (selectedSquare === square || !piece) {
       setSelectedSquare(null);
       setLegalDestinations([]);
@@ -98,7 +102,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
     setLegalDestinations([]);
     setSelectedSquare(null);
-    if (!targetSquare || moving || isOver) return false;
+    if (!targetSquare || moving || isOver || history.isViewingHistory) return false;
     if (piece.pieceType[0] !== "w") return false; // the computer plays black
 
     // No more "arm the shot" toggle - an Archer drop is a shoot exactly
@@ -209,18 +213,28 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     ]
   );
 
+  // A reviewed past position (see useMoveHistory) has no historical record
+  // of which squares held a hero piece at that point in time - only the
+  // live gameState does - so it always renders with plain base-type art
+  // instead, keeping just the King skin cosmetic.
+  const basePieces = useMemo(
+    () => buildPiecesWithEvolutions({ whiteKingSkinSrc }),
+    [whiteKingSkinSrc]
+  );
+
   const squareStyles = useMemo(() => {
+    if (history.isViewingHistory) return {};
     const styles = {};
     for (const { square, capture, shoot } of legalDestinations) {
       styles[square] = shoot ? SHOOT_RING_STYLE : capture ? RING_STYLE : DOT_STYLE;
     }
     return styles;
-  }, [legalDestinations]);
+  }, [legalDestinations, history.isViewingHistory]);
 
   const options = {
-    position: gameState.fen,
+    position: history.viewingFen,
     boardOrientation: "white",
-    allowDragging: !moving && !isOver,
+    allowDragging: !moving && !isOver && !history.isViewingHistory,
     canDragPiece: canDragWhiteOnly,
     showAnimations: false,
     onPieceDrag: handlePieceDrag,
@@ -234,7 +248,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     lightSquareStyle: { background: FLAT_2D_BOARD_COLORS.light },
     darkSquareStyle: { background: FLAT_2D_BOARD_COLORS.dark },
     squareStyles,
-    pieces,
+    pieces: history.isViewingHistory ? basePieces : pieces,
   };
 
   return (
@@ -248,10 +262,28 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         </button>
       </div>
 
-      <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor="white" />
+      {history.isViewingHistory ? (
+        <div className="game-status-banner reviewing">
+          Reviewing move {history.currentIndex} of {history.liveIndex}
+        </div>
+      ) : (
+        <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor="white" />
+      )}
 
       <div className="board-wrap custom-play-board">
         <Chessboard options={options} />
+      </div>
+
+      <div className="move-history-nav">
+        <button type="button" onClick={history.goBack} disabled={!history.canGoBack} title="Previous move">
+          ‹
+        </button>
+        <button type="button" onClick={history.goLive} disabled={!history.isViewingHistory} title="Back to live">
+          Live
+        </button>
+        <button type="button" onClick={history.goForward} disabled={!history.canGoForward} title="Next move">
+          ›
+        </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -290,7 +322,15 @@ export default function CustomGamePlay({ initialGame, onExit }) {
       ) : (
         <ol className="action-log">
           {gameState.action_log.map((entry, i) => (
-            <li key={i}>{entry}</li>
+            <li key={i}>
+              <button
+                type="button"
+                className={`action-log-entry${history.currentIndex === i + 1 ? " active" : ""}`}
+                onClick={() => history.goToIndex(i + 1)}
+              >
+                {entry}
+              </button>
+            </li>
           ))}
         </ol>
       )}
