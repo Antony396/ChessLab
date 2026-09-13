@@ -8,6 +8,7 @@ pool), each opened lazily and reused for the life of that thread.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import uuid
@@ -72,6 +73,15 @@ def init_db() -> None:
             status TEXT NOT NULL,
             created_at TEXT NOT NULL,
             UNIQUE(from_user_id, to_user_id)
+        );
+        CREATE TABLE IF NOT EXISTS saved_decks (
+            user_id TEXT NOT NULL,
+            slot INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            deck_json TEXT NOT NULL,
+            evolved_indices_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, slot)
         );
         """
     )
@@ -266,3 +276,47 @@ def are_friends(user_a: str, user_b: str) -> bool:
         (user_a, user_b, user_b, user_a),
     ).fetchone()
     return row is not None
+
+
+# --- Saved decks ---
+#
+# A "deck" here is exactly DeckBuilder.jsx's own in-memory shape: an 8-entry
+# array of piece letters (or null), file-indexed - not tied to a rank, so it
+# loads back in identically whether the player ends up White or Black next
+# time - plus which of those indices are evolved. Two slots per user, chosen
+# by the frontend (1 or 2); this layer doesn't care how many a UI offers.
+
+
+def save_deck(user_id: str, slot: int, name: str, deck: list, evolved_indices: list[int]) -> None:
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO saved_decks (user_id, slot, name, deck_json, evolved_indices_json, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(user_id, slot) DO UPDATE SET "
+        "name=excluded.name, deck_json=excluded.deck_json, evolved_indices_json=excluded.evolved_indices_json, "
+        "updated_at=excluded.updated_at",
+        (user_id, slot, name, json.dumps(deck), json.dumps(evolved_indices), datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+
+
+def list_saved_decks(user_id: str) -> list[dict]:
+    rows = get_conn().execute(
+        "SELECT slot, name, deck_json, evolved_indices_json FROM saved_decks WHERE user_id = ? ORDER BY slot",
+        (user_id,),
+    ).fetchall()
+    return [
+        {
+            "slot": r["slot"],
+            "name": r["name"],
+            "deck": json.loads(r["deck_json"]),
+            "evolved_indices": json.loads(r["evolved_indices_json"]),
+        }
+        for r in rows
+    ]
+
+
+def delete_saved_deck(user_id: str, slot: int) -> None:
+    conn = get_conn()
+    conn.execute("DELETE FROM saved_decks WHERE user_id = ? AND slot = ?", (user_id, slot))
+    conn.commit()

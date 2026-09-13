@@ -9,6 +9,7 @@ import {
   pieceImageSrc,
 } from "../pieces/flat2dPieces";
 import { postCustomSetup, postOnlineCreate, postOnlineRoomJoin } from "./api";
+import { deleteSavedDeck, listSavedDecks, saveDeckToSlot } from "./deckApi";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { postSimulSubmit } from "./social/api";
 
@@ -460,6 +461,10 @@ export default function DeckBuilder({
   // the hub-triggered station overlay already has its own "×" close button
   // wrapping this component, so it doesn't pass one to avoid a duplicate.
   onExit,
+  // Needed for the saved-deck slots (server-side, per account) below -
+  // every DeckBuilder usage is already inside an authenticated session
+  // (see HeroChessApp.jsx), so this is always available.
+  token,
 }) {
   // A friend challenge drafts on whichever rank actually matches my color
   // in that room (White = rank 1, Black = rank 8, same as joinMode's
@@ -495,6 +500,61 @@ export default function DeckBuilder({
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(false);
+  // Saved decks (up to 2 slots, server-side per account) - slot -> {name,
+  // deck, evolved_indices}, only populated for slots that actually have a
+  // save. Loaded once on mount; kept in sync locally after any save/delete
+  // here rather than re-fetching.
+  const [savedDecks, setSavedDecks] = useState({});
+  const [deckSlotBusy, setDeckSlotBusy] = useState(null);
+
+  useEffect(() => {
+    if (!token) return;
+    listSavedDecks(token)
+      .then((decks) => {
+        const bySlot = {};
+        for (const d of decks) bySlot[d.slot] = d;
+        setSavedDecks(bySlot);
+      })
+      .catch(() => {
+        // Non-fatal - the deck builder still works without saved slots.
+      });
+  }, [token]);
+
+  function handleSaveToSlot(slot) {
+    const name = window.prompt("Name this deck:", savedDecks[slot]?.name || `Deck ${slot}`);
+    if (!name) return;
+    setDeckSlotBusy(slot);
+    setError(null);
+    saveDeckToSlot(token, slot, { name, deck, evolved_indices: [...effectiveEvolvedIndices] })
+      .then((saved) => setSavedDecks((prev) => ({ ...prev, [slot]: saved })))
+      .catch((e) => setError(e.message))
+      .finally(() => setDeckSlotBusy(null));
+  }
+
+  function handleLoadFromSlot(slot) {
+    const saved = savedDecks[slot];
+    if (!saved) return;
+    setDeck(saved.deck);
+    setEvolvedIndices(new Set(saved.evolved_indices));
+    setEvoSlotType(null);
+  }
+
+  function handleDeleteSlot(slot) {
+    if (!savedDecks[slot]) return;
+    if (!window.confirm(`Delete the deck saved in slot ${slot}?`)) return;
+    setDeckSlotBusy(slot);
+    setError(null);
+    deleteSavedDeck(token, slot)
+      .then(() =>
+        setSavedDecks((prev) => {
+          const next = { ...prev };
+          delete next[slot];
+          return next;
+        })
+      )
+      .catch((e) => setError(e.message))
+      .finally(() => setDeckSlotBusy(null));
+  }
 
   const effectiveEvolvedIndices = useMemo(
     () => new Set([...evolvedIndices].filter((i) => deck[i] === "N" || deck[i] === "B")),
@@ -723,6 +783,47 @@ export default function DeckBuilder({
           <button type="button" onClick={onExit}>
             Home
           </button>
+        </div>
+      )}
+      {token && (
+        <div className="saved-deck-slots">
+          {[1, 2].map((slot) => {
+            const saved = savedDecks[slot];
+            const busy = deckSlotBusy === slot;
+            return (
+              <div key={slot} className="saved-deck-slot">
+                <button
+                  type="button"
+                  className="saved-deck-slot-load"
+                  disabled={!saved || busy}
+                  onClick={() => handleLoadFromSlot(slot)}
+                  title={saved ? `Load "${saved.name}"` : `Slot ${slot} is empty`}
+                >
+                  {saved ? saved.name : `Slot ${slot}: empty`}
+                </button>
+                <button
+                  type="button"
+                  className="saved-deck-slot-save"
+                  disabled={busy}
+                  onClick={() => handleSaveToSlot(slot)}
+                  title={`Save the current deck to slot ${slot}`}
+                >
+                  Save
+                </button>
+                {saved && (
+                  <button
+                    type="button"
+                    className="saved-deck-slot-delete"
+                    disabled={busy}
+                    onClick={() => handleDeleteSlot(slot)}
+                    title={`Delete slot ${slot}`}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <div className={`points-bar${overBudget ? " over" : ""}${atFullBudget ? " full" : ""}`}>

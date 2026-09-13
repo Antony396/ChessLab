@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.custom_game_routes import router as custom_game_router
+from app.api.deck_routes import router as deck_router
 from app.api.online_game_routes import router as online_game_router
 from app.api.puzzle_rush_routes import router as puzzle_rush_router
 from app.api.routes import router
@@ -45,3 +46,4 @@ app.include_router(custom_game_router, prefix="/api/game")
 app.include_router(online_game_router, prefix="/api/game")
 app.include_router(social_router, prefix="/api/social")
 app.include_router(puzzle_rush_router, prefix="/api/puzzle-rush")
+app.include_router(deck_router, prefix="/api/decks")

@@ -219,6 +219,7 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
         joinMode
         roomId={joinRoomId}
         onOnlineDeckSubmitted={handleOnlineDeckSubmitted}
+        token={auth.token}
         onExit={() => {
           window.location.href = window.location.pathname;
         }}
@@ -251,6 +252,7 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
         simulRoom={simulRoom}
         onSimulWaiting={handleSimulWaiting}
         onSimulGameReady={handleSimulGameReady}
+        token={auth.token}
         onExit={() => setSimulRoom(null)}
       />
     );
@@ -293,7 +295,11 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
               {hub.activeOverlay === "friends" ? (
                 <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeSent} />
               ) : (
-                <DeckBuilder onGameStarted={handleGameStartedFromHub} onOnlineGameCreated={handleOnlineGameCreatedFromHub} />
+                <DeckBuilder
+                  onGameStarted={handleGameStartedFromHub}
+                  onOnlineGameCreated={handleOnlineGameCreatedFromHub}
+                  token={auth.token}
+                />
               )}
             </div>
           </div>

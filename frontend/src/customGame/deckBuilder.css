@@ -27,6 +27,51 @@
   background: var(--hc-surface-strong);
 }
 
+.saved-deck-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.saved-deck-slot {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  overflow: hidden;
+}
+
+.saved-deck-slot button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: none;
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.saved-deck-slot button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saved-deck-slot-load {
+  border-right: 1px solid var(--hc-border);
+}
+
+.saved-deck-slot button:not(:disabled):hover {
+  background: var(--hc-surface-strong);
+}
+
+.saved-deck-slot-delete {
+  color: #d97070;
+  border-left: 1px solid var(--hc-border);
+}
+
 /* Points meter: label / progress track / fractional counter. */
 .points-bar {
   display: flex;
