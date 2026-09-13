@@ -73,22 +73,85 @@ export function playHopSound() {
 // from an actual move landing (playMoveSound), matching how chess.com-style
 // move-history scrubbing sounds different from playing a real move.
 export function playRewindSound() {
+  playSweep({ from: 520, to: 260, duration: 0.09, gain: 0.22 });
+}
+
+// The forward-navigation counterpart to playRewindSound - same texture, an
+// upward sweep instead of downward, so back/forward read as opposite
+// actions rather than identical clicks.
+export function playForwardSound() {
+  playSweep({ from: 260, to: 520, duration: 0.09, gain: 0.22 });
+}
+
+function playSweep({ from, to, duration, gain }) {
   const ctx = getContext();
   if (!ctx) return;
   try {
     const now = ctx.currentTime;
-    const duration = 0.09;
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.exponentialRampToValueAtTime(260, now + duration);
+    osc.frequency.setValueAtTime(from, now);
+    osc.frequency.exponentialRampToValueAtTime(to, now + duration);
     const gainNode = ctx.createGain();
-    gainNode.gain.setValueAtTime(0.22, now);
+    gainNode.gain.setValueAtTime(gain, now);
     gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.connect(gainNode).connect(ctx.destination);
     osc.start(now);
     osc.stop(now + duration);
   } catch {
     // Sound is a nice-to-have, never worth breaking navigation over.
+  }
+}
+
+// A sharp double-blip - urgent but brief, distinct from a normal move so a
+// check registers as "something just happened" without being alarming.
+export function playCheckSound() {
+  const ctx = getContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    [0, 0.09].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(740, now + delay);
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0.18, now + delay);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.07);
+      osc.connect(gainNode).connect(ctx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.07);
+    });
+  } catch {
+    // Sound is a nice-to-have, never worth breaking gameplay over.
+  }
+}
+
+// A longer, descending three-note cue - deliberately more dramatic/final
+// than playCheckSound, so a checkmate is unmistakably "the game just ended"
+// rather than just another check.
+export function playCheckmateSound() {
+  const ctx = getContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const notes = [520, 390, 260];
+    notes.forEach((freq, i) => {
+      const delay = i * 0.14;
+      const duration = 0.22;
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(freq, now + delay);
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 1200;
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0.16, now + delay);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + delay + duration);
+      osc.connect(filter).connect(gainNode).connect(ctx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + duration);
+    });
+  } catch {
+    // Sound is a nice-to-have, never worth breaking gameplay over.
   }
 }

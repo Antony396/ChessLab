@@ -9,7 +9,7 @@ from app.custom_chess import ai
 from app.custom_chess import fen as fen_utils
 from app.custom_chess import rules
 from app.custom_chess import store
-from app.custom_chess.models import CustomGameState, CustomMoveRequest, CustomSetupRequest
+from app.custom_chess.models import CustomGameState, CustomMoveRequest, CustomSetupRequest, EvolutionSnapshot
 
 router = APIRouter()
 
@@ -586,6 +586,23 @@ def _piece_letter_or_none(piece_type: Optional[chess.PieceType]) -> Optional[str
     return chess.piece_symbol(piece_type).upper() if piece_type is not None else None
 
 
+def _evolution_snapshot_to_model(snapshot: dict) -> EvolutionSnapshot:
+    return EvolutionSnapshot(
+        white_dragon_square=_square_name_or_none(snapshot["white_dragon_square"]),
+        black_dragon_square=_square_name_or_none(snapshot["black_dragon_square"]),
+        white_wizard_squares=_square_names(snapshot["white_wizard_squares"]),
+        black_wizard_squares=_square_names(snapshot["black_wizard_squares"]),
+        white_archer_squares=_square_names(snapshot["white_archer_squares"]),
+        black_archer_squares=_square_names(snapshot["black_archer_squares"]),
+        white_hydra_squares=_square_names(snapshot["white_hydra_squares"]),
+        black_hydra_squares=_square_names(snapshot["black_hydra_squares"]),
+        white_cyclops_squares=_square_names(snapshot["white_cyclops_squares"]),
+        black_cyclops_squares=_square_names(snapshot["black_cyclops_squares"]),
+        white_mirror_squares=_square_names(snapshot["white_mirror_squares"]),
+        black_mirror_squares=_square_names(snapshot["black_mirror_squares"]),
+    )
+
+
 def _to_state(game: store.CustomGame) -> CustomGameState:
     return CustomGameState(
         id=game.id,
@@ -612,6 +629,7 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         in_check=_in_check(game, game.board.turn),
         action_log=list(game.action_log),
         fen_history=list(game.fen_history),
+        evolution_history=[_evolution_snapshot_to_model(snap) for snap in game.evolution_history],
     )
 
 
@@ -858,6 +876,7 @@ def _apply_move(
         raise rules.IllegalMoveError("That move would leave your king in check")
 
     game.fen_history.append(board.fen())
+    game.evolution_history.append(store.snapshot_evolution(game))
     return log_entry
 
 

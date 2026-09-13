@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { playRewindSound } from "./sound";
+import { playForwardSound, playRewindSound } from "./sound";
+
+// Every action_log entry (see backend/app/api/custom_game_routes.py's
+// _apply_move) starts with "{from}-{to}" or, for an Archer's non-relocating
+// shoot, "{from} shoots {to}" - optionally followed by ": Label" or a
+// trailing " (AI)". This grabs just the two square names regardless of
+// which shape produced them, for the last-move highlight below.
+function parseMoveSquares(logEntry) {
+  if (!logEntry) return null;
+  const match = logEntry.match(/^([a-h][1-8])(?:-|\s+shoots\s+)([a-h][1-8])/);
+  return match ? { from: match[1], to: match[2] } : null;
+}
 
 // Chess.com-style back/forward review of past positions, driven entirely by
 // gameState.fen_history (one FEN per position the board has actually been
@@ -16,6 +27,19 @@ export function useMoveHistory(gameState) {
   const currentIndex = historyIndex === null ? liveIndex : Math.min(historyIndex, liveIndex);
   const isViewingHistory = historyIndex !== null && currentIndex < liveIndex;
   const viewingFen = fenHistory[currentIndex] ?? gameState.fen;
+  // The move that produced the position currently being viewed (whether
+  // that's live or a reviewed past position) - action_log[i] is what
+  // produced fen_history[i+1], so the move landing on fen_history[currentIndex]
+  // is action_log[currentIndex - 1]. null at the very start position, since
+  // nothing produced it.
+  const actionLog = gameState.action_log || [];
+  const lastMoveSquares = currentIndex > 0 ? parseMoveSquares(actionLog[currentIndex - 1]) : null;
+  // Which squares held which evolved/hero piece at the position currently
+  // being viewed - see backend's EvolutionSnapshot. Lets a reviewed past
+  // position render with the SAME hero-piece art the live position uses,
+  // instead of falling back to plain base-type art.
+  const evolutionHistory = gameState.evolution_history || [];
+  const viewingEvolution = evolutionHistory[currentIndex] || null;
 
   function goBack() {
     setHistoryIndex((prev) => {
@@ -30,17 +54,18 @@ export function useMoveHistory(gameState) {
     setHistoryIndex((prev) => {
       if (prev === null) return null;
       const next = prev + 1;
+      playForwardSound();
       return next >= liveIndex ? null : next;
     });
   }
 
-  // index is a fen_history index directly (0 = starting position). Only
-  // plays the rewind sound when this actually moves backward - same "each
-  // backward move" rule goBack follows above - not on a forward jump or a
-  // no-op re-click of the already-current entry.
+  // index is a fen_history index directly (0 = starting position). Plays
+  // the matching rewind/forward sound based on which direction this jump
+  // actually moves - not on a no-op re-click of the already-current entry.
   function goToIndex(index) {
     const clamped = Math.max(0, Math.min(index, liveIndex));
     if (clamped < currentIndex) playRewindSound();
+    else if (clamped > currentIndex) playForwardSound();
     setHistoryIndex(clamped >= liveIndex ? null : clamped);
   }
 
@@ -53,6 +78,8 @@ export function useMoveHistory(gameState) {
     isViewingHistory,
     currentIndex,
     liveIndex,
+    lastMoveSquares,
+    viewingEvolution,
     canGoBack: currentIndex > 0,
     canGoForward: isViewingHistory,
     goBack,

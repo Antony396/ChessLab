@@ -325,6 +325,31 @@ export function computeLegalDestinations({
     return [];
   }
 
+  // chess.moves() - and anything built from a scratch copy of `chess`, like
+  // mirrorMimicDestinations's own relabel trick - is turn-gated: it silently
+  // returns nothing for a piece whose color doesn't match whose turn it
+  // currently is in the FEN. A click-to-preview needs to work for ANY
+  // piece regardless of whose actual turn it is (see OnlineGamePlay.jsx's
+  // own click handler comment), so the scratch position's turn is flipped
+  // to match this square's own piece before generating anything from it -
+  // this was the real "sometimes doesn't show where pieces move" bug:
+  // previewing your own piece off-turn, or an opponent's piece on your
+  // turn, silently produced zero destinations either way. The hero-special
+  // offset-based destinations below (king-step, knight-shape, etc.) never
+  // called chess.moves() at all, so they were never affected - only the
+  // generic chess.js-native modes were.
+  const mover = chess.get(square);
+  if (!mover) return [];
+  if (mover.color !== chess.turn()) {
+    const fenParts = chess.fen().split(" ");
+    fenParts[1] = mover.color;
+    try {
+      chess = new Chess(fenParts.join(" "));
+    } catch {
+      return [];
+    }
+  }
+
   if (isArcherSquare) {
     // No more "arm the shot" toggle - selecting an Archer always shows both
     // its move-only king-step destinations (plain dots) and its knight's-

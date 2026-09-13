@@ -58,13 +58,17 @@ class CustomGame:
     # One FEN per position the board has actually been in, oldest first,
     # starting with the initial setup - lets the frontend's move-history
     # back/forward navigation show the exact position after any past move
-    # without needing its own copy of the move-application logic. Hero-piece
-    # art (Dragon vs. Rook, etc.) isn't tracked historically alongside this -
-    # a reviewed position intentionally renders with plain base-type art,
-    # not a snapshot of white_dragon_square and friends at that point in
-    # time, since capturing that whole extra history isn't worth it for a
-    # read-only review feature.
+    # without needing its own copy of the move-application logic.
     fen_history: list[str] = field(default_factory=list)
+    # One evolution-tracking snapshot per fen_history entry, same indexing -
+    # a plain dict copy of every white_*/black_*_square(s) field above at
+    # that point in time. Without this, a reviewed past position would have
+    # no way to know a given square held a Dragon/Hydra/etc. rather than its
+    # plain base type, and would have to fall back to rendering everything
+    # as its base art - confusing right after an evolved piece has actually
+    # moved, since the reviewed position would show it as a plain Rook/
+    # Knight/etc. instead of what it actually was.
+    evolution_history: list[dict] = field(default_factory=list)
     # Online multiplayer only (unused/None for vs_ai and the old local
     # sandbox): secret tokens proving which connected browser is allowed to
     # move which color. A CustomGame is only ever created once both sides'
@@ -124,6 +128,28 @@ _ROOMS: dict[str, PendingRoom] = {}
 _SIMUL_ROOMS: dict[str, SimulRoom] = {}
 
 
+def snapshot_evolution(game: CustomGame) -> dict:
+    """A plain dict copy of every evolution-tracking field on `game` right
+    now - see CustomGame.evolution_history for why. Squares are copied by
+    value (a fresh set, not the same set object) so a later in-place mutation
+    of game.white_wizard_squares (etc.) can never silently rewrite a past
+    snapshot too."""
+    return {
+        "white_dragon_square": game.white_dragon_square,
+        "black_dragon_square": game.black_dragon_square,
+        "white_wizard_squares": set(game.white_wizard_squares),
+        "black_wizard_squares": set(game.black_wizard_squares),
+        "white_archer_squares": set(game.white_archer_squares),
+        "black_archer_squares": set(game.black_archer_squares),
+        "white_hydra_squares": set(game.white_hydra_squares),
+        "black_hydra_squares": set(game.black_hydra_squares),
+        "white_cyclops_squares": set(game.white_cyclops_squares),
+        "black_cyclops_squares": set(game.black_cyclops_squares),
+        "white_mirror_squares": set(game.white_mirror_squares),
+        "black_mirror_squares": set(game.black_mirror_squares),
+    }
+
+
 def create_game(
     board: chess.Board,
     white_dragon_square: Optional[chess.Square] = None,
@@ -158,6 +184,7 @@ def create_game(
         vs_ai=vs_ai,
         fen_history=[board.fen()],
     )
+    game.evolution_history.append(snapshot_evolution(game))
     _GAMES[game.id] = game
     return game
 

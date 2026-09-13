@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import AvatarController from "./AvatarController";
 import InteractiveTrigger from "./InteractiveTrigger";
 import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, isInsideRoom } from "./useHubState";
@@ -35,12 +35,14 @@ function RemoteAvatar({ occupant, bubbleText }) {
 }
 
 // The always-visible chat input, docked to the bottom of the room. Enter
-// sends (and clears the field); Escape blurs without sending. Movement's
-// own keydown listeners (AvatarController's WASD/arrows, and the "E to
-// interact" one below) already skip acting while an <input>/<textarea> has
-// focus, so typing here never also walks the avatar around or opens the
-// pedestal overlay.
-function ChatBar({ onSend }) {
+// sends (and clears the field) while focused; pressing Enter ANYWHERE ELSE
+// in the hub focuses it instead (see HubWorld's own window-level listener
+// below), game-chat-convention style. Escape blurs without sending.
+// Movement's own keydown listeners (AvatarController's WASD/arrows, and the
+// "E to interact" one below) already skip acting while an <input>/
+// <textarea> has focus, so typing here never also walks the avatar around
+// or opens the pedestal overlay.
+const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
   const [value, setValue] = useState("");
 
   function handleKeyDown(e) {
@@ -55,6 +57,7 @@ function ChatBar({ onSend }) {
 
   return (
     <input
+      ref={ref}
       type="text"
       className="hub-chat-input"
       placeholder="Say something… (Enter to send)"
@@ -64,7 +67,7 @@ function ChatBar({ onSend }) {
       onKeyDown={handleKeyDown}
     />
   );
-}
+});
 
 // Extra space above row 0 so a tall avatar/prop sprite's head has room to
 // stick up past the top of its own tile without being clipped by the
@@ -232,6 +235,25 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
   // send it, same pattern as my own avatar's movement.
   const [myBubble, setMyBubble] = useState(null); // {text, key} | null
   const myBubbleTimerRef = useRef(null);
+  const chatInputRef = useRef(null);
+
+  // Press Enter anywhere in the hub (not just while the chat box already
+  // has focus) to jump into it - standard game-chat convention. Skipped
+  // when some OTHER input/textarea already has focus (that keystroke is
+  // meant for it, not for stealing focus into chat), and when the chat box
+  // itself already has focus (its own handler below sends instead).
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key !== "Enter") return;
+      const active = document.activeElement;
+      if (active === chatInputRef.current) return;
+      if (active?.tagName === "INPUT" || active?.tagName === "TEXTAREA") return;
+      e.preventDefault();
+      chatInputRef.current?.focus();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   function handleSendChat(text) {
     presence?.sendChat(text);
@@ -334,7 +356,7 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
           </div>
         </div>
 
-        <ChatBar onSend={handleSendChat} />
+        <ChatBar ref={chatInputRef} onSend={handleSendChat} />
 
         <p className="hub-hint">
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}

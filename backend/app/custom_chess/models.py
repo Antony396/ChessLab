@@ -20,6 +20,30 @@ class CustomSetupRequest(BaseModel):
     vs_ai: bool = True
 
 
+class EvolutionSnapshot(BaseModel):
+    """Which squares held which evolved/hero piece at one point in a game's
+    history - one of these per CustomGameState.fen_history entry, same
+    indexing. Mirrors CustomGameState's own evolution-tracking fields
+    exactly, just frozen at that point in time, so the frontend can render a
+    reviewed past position with the SAME hero-piece art logic it already
+    uses for the live position, instead of falling back to plain base-type
+    art (a Dragon/Hydra momentarily looking like a Rook/Knight) - confusing
+    right after that piece just did something special."""
+
+    white_dragon_square: Optional[str] = None
+    black_dragon_square: Optional[str] = None
+    white_wizard_squares: list[str] = []
+    black_wizard_squares: list[str] = []
+    white_archer_squares: list[str] = []
+    black_archer_squares: list[str] = []
+    white_hydra_squares: list[str] = []
+    black_hydra_squares: list[str] = []
+    white_cyclops_squares: list[str] = []
+    black_cyclops_squares: list[str] = []
+    white_mirror_squares: list[str] = []
+    black_mirror_squares: list[str] = []
+
+
 class CustomMoveRequest(BaseModel):
     game_id: str
     from_square: str
@@ -76,10 +100,11 @@ class CustomGameState(BaseModel):
     in_check: bool = False
     action_log: list[str]
     # One FEN per position the board has actually been in, oldest first -
-    # see CustomGame.fen_history for why hero-piece art isn't tracked
-    # historically alongside this (a reviewed past position always renders
-    # with plain base-type art).
+    # see CustomGame.fen_history.
     fen_history: list[str] = []
+    # One evolution-tracking snapshot per fen_history entry, same indexing -
+    # see EvolutionSnapshot and CustomGame.evolution_history.
+    evolution_history: list[EvolutionSnapshot] = []
 
 
 class OnlineMoveRequest(BaseModel):

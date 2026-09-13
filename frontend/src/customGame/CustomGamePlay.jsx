@@ -7,10 +7,18 @@ import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { playMoveSound } from "./sound";
 import GameStatusBanner from "./GameStatusBanner";
 import { useMoveHistory } from "./useMoveHistory";
+import { useCapturedRows } from "./CapturedTray";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
 const SHOOT_RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(200,60,30,0.6)" };
+// chess.com-style highlight for the from/to squares of whatever move is
+// currently on screen (live, or a reviewed past one - see useMoveHistory's
+// lastMoveSquares). A background color rather than backgroundImage/
+// boxShadow like the hint styles above, so it composes underneath one if a
+// square happens to be both a highlighted last-move square and a legal-move
+// hint at once.
+const LAST_MOVE_STYLE = { background: "rgba(255, 214, 51, 0.45)" };
 
 const STATUS_LABEL = {
   in_progress: "In progress",
@@ -35,6 +43,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const history = useMoveHistory(gameState);
+  const capturedRows = useCapturedRows(gameState, "white"); // the human is always White here (vs-AI)
 
   const isOver = gameState.status !== "in_progress";
   const whiteArcherSquares = gameState.white_archer_squares || [];
@@ -213,23 +222,48 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     ]
   );
 
-  // A reviewed past position (see useMoveHistory) has no historical record
-  // of which squares held a hero piece at that point in time - only the
-  // live gameState does - so it always renders with plain base-type art
-  // instead, keeping just the King skin cosmetic.
-  const basePieces = useMemo(
-    () => buildPiecesWithEvolutions({ whiteKingSkinSrc }),
-    [whiteKingSkinSrc]
-  );
+  // A reviewed past position (see useMoveHistory) renders with the SAME
+  // hero-piece art the live position does, just from that position's own
+  // evolution snapshot (history.viewingEvolution) instead of the live
+  // gameState - a Dragon/Hydra/etc. still looks like itself when reviewing
+  // the exact move it just made, rather than falling back to its plain
+  // base-type art.
+  const historyPieces = useMemo(() => {
+    const snap = history.viewingEvolution || {};
+    return buildPiecesWithEvolutions({
+      whiteDragonSquare: snap.white_dragon_square,
+      blackDragonSquare: snap.black_dragon_square,
+      whiteWizardSquares: snap.white_wizard_squares,
+      blackWizardSquares: snap.black_wizard_squares,
+      whiteArcherSquares: snap.white_archer_squares,
+      blackArcherSquares: snap.black_archer_squares,
+      whiteHydraSquares: snap.white_hydra_squares,
+      blackHydraSquares: snap.black_hydra_squares,
+      whiteCyclopsSquares: snap.white_cyclops_squares,
+      blackCyclopsSquares: snap.black_cyclops_squares,
+      whiteMirrorSquares: snap.white_mirror_squares,
+      blackMirrorSquares: snap.black_mirror_squares,
+      whiteKingSkinSrc,
+    });
+  }, [history.viewingEvolution, whiteKingSkinSrc]);
 
   const squareStyles = useMemo(() => {
-    if (history.isViewingHistory) return {};
     const styles = {};
-    for (const { square, capture, shoot } of legalDestinations) {
-      styles[square] = shoot ? SHOOT_RING_STYLE : capture ? RING_STYLE : DOT_STYLE;
+    if (history.lastMoveSquares) {
+      styles[history.lastMoveSquares.from] = LAST_MOVE_STYLE;
+      styles[history.lastMoveSquares.to] = LAST_MOVE_STYLE;
+    }
+    // Legal-move hints are computed against the LIVE position, so they'd be
+    // wrong overlaid on a reviewed past one - only the last-move highlight
+    // above (which is itself indexed to whatever's being reviewed) applies
+    // while history.isViewingHistory.
+    if (!history.isViewingHistory) {
+      for (const { square, capture, shoot } of legalDestinations) {
+        styles[square] = { ...styles[square], ...(shoot ? SHOOT_RING_STYLE : capture ? RING_STYLE : DOT_STYLE) };
+      }
     }
     return styles;
-  }, [legalDestinations, history.isViewingHistory]);
+  }, [legalDestinations, history.isViewingHistory, history.lastMoveSquares]);
 
   const options = {
     position: history.viewingFen,
@@ -248,7 +282,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     lightSquareStyle: { background: FLAT_2D_BOARD_COLORS.light },
     darkSquareStyle: { background: FLAT_2D_BOARD_COLORS.dark },
     squareStyles,
-    pieces: history.isViewingHistory ? basePieces : pieces,
+    pieces: history.isViewingHistory ? historyPieces : pieces,
   };
 
   return (
@@ -262,6 +296,8 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         </button>
       </div>
 
+      {capturedRows.theirs}
+
       <div className="board-wrap custom-play-board">
         {history.isViewingHistory ? (
           <div className="game-status-banner reviewing">
@@ -272,6 +308,8 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         )}
         <Chessboard options={options} />
       </div>
+
+      {capturedRows.mine}
 
       <div className="move-history-nav">
         <button type="button" onClick={history.goBack} disabled={!history.canGoBack} title="Previous move">

@@ -94,6 +94,33 @@ def test_fen_history_grows_by_one_per_move_and_starts_with_the_setup_position(cl
     assert unchanged["fen_history"] == after_e5["fen_history"]
 
 
+def test_evolution_history_tracks_a_dragon_across_a_knight_shape_move(client):
+    # Regression coverage for "reviewing a past move turns hero pieces back
+    # into their base type, which is confusing" - evolution_history must
+    # track exactly where the Dragon was at each point, same indexing as
+    # fen_history, so the frontend can render a reviewed position with the
+    # right hero art instead of a plain base-type fallback.
+    game = _setup_game(client, white_evolved_squares=["b1"])
+    game_id = game["id"]
+    assert game["white_dragon_square"] == "b1"
+    assert game["evolution_history"] == [{
+        "white_dragon_square": "b1", "black_dragon_square": None,
+        "white_wizard_squares": [], "black_wizard_squares": [],
+        "white_archer_squares": [], "black_archer_squares": [],
+        "white_hydra_squares": [], "black_hydra_squares": [],
+        "white_cyclops_squares": [], "black_cyclops_squares": [],
+        "white_mirror_squares": [], "black_mirror_squares": [],
+    }]
+
+    after_hop = client.post(
+        "/api/game/custom-move", json={"game_id": game_id, "from_square": "b1", "to_square": "c3"}
+    ).json()
+    assert after_hop["white_dragon_square"] == "c3"
+    assert len(after_hop["evolution_history"]) == 2
+    assert after_hop["evolution_history"][0]["white_dragon_square"] == "b1"  # unchanged - the OLD position
+    assert after_hop["evolution_history"][1]["white_dragon_square"] == "c3"  # the new position
+
+
 def test_standard_move_rejects_illegal_move(client):
     game = _setup_game(client)
     resp = client.post(

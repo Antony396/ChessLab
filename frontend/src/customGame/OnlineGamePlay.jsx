@@ -7,10 +7,23 @@ import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquare
 import { playMoveSound } from "./sound";
 import GameStatusBanner from "./GameStatusBanner";
 import { useMoveHistory } from "./useMoveHistory";
+import { useCapturedRows } from "./CapturedTray";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
 const SHOOT_RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(200,60,30,0.6)" };
+// chess.com-style highlight for the from/to squares of whatever move is
+// currently on screen (live, or a reviewed past one - see useMoveHistory's
+// lastMoveSquares). A background color rather than backgroundImage/
+// boxShadow like the hint styles above, so it composes underneath one if a
+// square happens to be both a highlighted last-move square and a legal-move
+// hint at once.
+const LAST_MOVE_STYLE = { background: "rgba(255, 214, 51, 0.45)" };
+// A queued premove's from/to squares (see the premove state below) - a
+// distinct blue so it's never confused with the yellow last-move highlight
+// or the black hint dots/rings, matching the color premoves conventionally
+// use elsewhere (chess.com included).
+const PREMOVE_STYLE = { background: "rgba(59, 130, 246, 0.45)" };
 
 const STATUS_LABEL = {
   in_progress: "In progress",
@@ -26,7 +39,16 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const [error, setError] = useState(null);
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
+  // At most one queued premove - {from, to} | null. Dropping my own piece
+  // during the opponent's turn queues one instead of submitting right away
+  // (see handlePieceDrop); the effect below fires it for real the instant
+  // it actually becomes my turn. Never validated up front beyond "it's my
+  // own piece" - if the position has since changed enough to make it
+  // illegal, the normal move-rejection path (the .catch() in submitMove)
+  // handles that exactly like a bad move typed in on your own turn would.
+  const [premove, setPremove] = useState(null);
   const history = useMoveHistory(gameState);
+  const capturedRows = useCapturedRows(gameState, myColor);
 
   const myPrefix = myColor === "white" ? "w" : "b";
   // Only my own King wears my equipped skin - the opponent's equipped skin
@@ -132,8 +154,11 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     );
   }
 
+  // Allows dragging my own piece even on the opponent's turn - that's what
+  // makes a premove possible at all (see handlePieceDrop). Still only ever
+  // my own piece, and never while reviewing history or once the game's over.
   function canDragMyTurn({ piece }) {
-    return isMyTurn && !history.isViewingHistory && piece.pieceType[0] === myPrefix;
+    return !isOver && !history.isViewingHistory && piece.pieceType[0] === myPrefix;
   }
 
   function handlePieceDrag({ isSparePiece, square, piece }) {
@@ -159,12 +184,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     showLegalDestinationsFor(square, piece.pieceType[0]);
   }
 
-  function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
-    setLegalDestinations([]);
-    setSelectedSquare(null);
-    if (!targetSquare || moving || isOver || !isMyTurn || history.isViewingHistory) return false;
-    if (piece.pieceType[0] !== myPrefix) return false;
-
+  // The actual move submission - shared by a real drop (called directly)
+  // and a queued premove (called by the effect below once it's actually my
+  // turn). `shoot` is always recomputed fresh against whatever gameState is
+  // current at the moment this runs, never trusted from whenever a premove
+  // was originally queued - the position (and so which squares an Archer
+  // can actually shoot) may have changed while it was waiting.
+  function submitMove(sourceSquare, targetSquare) {
     // No more "arm the shot" toggle - an Archer drop is a shoot exactly
     // when the target is one of its knight's-move capture squares, and a
     // relocate otherwise (tryOptimisticFen/the server independently reject
@@ -229,6 +255,37 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     return appliedOptimistic && !shoot;
   }
 
+  function handlePieceDrop({ sourceSquare, targetSquare, piece }) {
+    setLegalDestinations([]);
+    setSelectedSquare(null);
+    if (!targetSquare || moving || isOver || history.isViewingHistory) return false;
+    if (piece.pieceType[0] !== myPrefix) return false;
+
+    if (!isMyTurn) {
+      // Premove: queue it instead of submitting now (see submitMove and the
+      // effect below for where it actually fires) - nothing has really
+      // moved yet, so the piece must snap back to sourceSquare (return
+      // false) rather than visually relocating.
+      setPremove({ from: sourceSquare, to: targetSquare });
+      return false;
+    }
+
+    return submitMove(sourceSquare, targetSquare);
+  }
+
+  // Fires a queued premove the instant it actually becomes my turn - not
+  // re-validated against the current position beyond what submitMove
+  // itself already does for a normal drop (the server is the final word
+  // either way; a premove that's no longer legal just gets rejected and
+  // rolled back exactly like a bad on-turn move would).
+  useEffect(() => {
+    if (!isMyTurn || !premove || isOver) return;
+    const { from, to } = premove;
+    setPremove(null);
+    submitMove(from, to);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMyTurn, isOver]);
+
   const pieces = useMemo(
     () =>
       buildPiecesWithEvolutions({
@@ -265,32 +322,63 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     ]
   );
 
-  // A reviewed past position (see useMoveHistory) has no historical record
-  // of which squares held a hero piece at that point in time - only the
-  // live gameState does - so it always renders with plain base-type art
-  // instead, keeping just the King skin cosmetic.
-  const basePieces = useMemo(
-    () =>
-      buildPiecesWithEvolutions({
-        whiteKingSkinSrc: myColor === "white" ? myKingSkinSrc : undefined,
-        blackKingSkinSrc: myColor === "black" ? myKingSkinSrc : undefined,
-      }),
-    [myColor, myKingSkinSrc]
-  );
+  // A reviewed past position (see useMoveHistory) renders with the SAME
+  // hero-piece art the live position does, just from that position's own
+  // evolution snapshot (history.viewingEvolution) instead of the live
+  // gameState - a Dragon/Hydra/etc. still looks like itself when reviewing
+  // the exact move it just made, rather than falling back to its plain
+  // base-type art.
+  const historyPieces = useMemo(() => {
+    const snap = history.viewingEvolution || {};
+    return buildPiecesWithEvolutions({
+      whiteDragonSquare: snap.white_dragon_square,
+      blackDragonSquare: snap.black_dragon_square,
+      whiteWizardSquares: snap.white_wizard_squares,
+      blackWizardSquares: snap.black_wizard_squares,
+      whiteArcherSquares: snap.white_archer_squares,
+      blackArcherSquares: snap.black_archer_squares,
+      whiteHydraSquares: snap.white_hydra_squares,
+      blackHydraSquares: snap.black_hydra_squares,
+      whiteCyclopsSquares: snap.white_cyclops_squares,
+      blackCyclopsSquares: snap.black_cyclops_squares,
+      whiteMirrorSquares: snap.white_mirror_squares,
+      blackMirrorSquares: snap.black_mirror_squares,
+      whiteKingSkinSrc: myColor === "white" ? myKingSkinSrc : undefined,
+      blackKingSkinSrc: myColor === "black" ? myKingSkinSrc : undefined,
+    });
+  }, [history.viewingEvolution, myColor, myKingSkinSrc]);
 
   const squareStyles = useMemo(() => {
-    if (history.isViewingHistory) return {};
     const styles = {};
-    for (const { square, capture, shoot } of legalDestinations) {
-      styles[square] = shoot ? SHOOT_RING_STYLE : capture ? RING_STYLE : DOT_STYLE;
+    if (history.lastMoveSquares) {
+      styles[history.lastMoveSquares.from] = LAST_MOVE_STYLE;
+      styles[history.lastMoveSquares.to] = LAST_MOVE_STYLE;
+    }
+    // Legal-move hints are computed against the LIVE position, so they'd be
+    // wrong overlaid on a reviewed past one - only the last-move highlight
+    // above (which is itself indexed to whatever's being reviewed) applies
+    // while history.isViewingHistory.
+    if (!history.isViewingHistory) {
+      for (const { square, capture, shoot } of legalDestinations) {
+        styles[square] = { ...styles[square], ...(shoot ? SHOOT_RING_STYLE : capture ? RING_STYLE : DOT_STYLE) };
+      }
+    }
+    // Drawn last so it always wins over a last-move/hint style on the same
+    // square - a queued premove is the more important thing to see.
+    if (premove) {
+      styles[premove.from] = { ...styles[premove.from], ...PREMOVE_STYLE };
+      styles[premove.to] = { ...styles[premove.to], ...PREMOVE_STYLE };
     }
     return styles;
-  }, [legalDestinations, history.isViewingHistory]);
+  }, [legalDestinations, history.isViewingHistory, history.lastMoveSquares, premove]);
 
   const options = {
     position: history.viewingFen,
     boardOrientation: myColor,
-    allowDragging: !moving && !isOver && isMyTurn && !history.isViewingHistory,
+    // No longer gated on isMyTurn - canDragMyTurn (below) already restricts
+    // this to my own piece only, and allowing it off-turn too is what makes
+    // a premove possible in the first place (see handlePieceDrop).
+    allowDragging: !moving && !isOver && !history.isViewingHistory,
     canDragPiece: canDragMyTurn,
     showAnimations: false,
     onPieceDrag: handlePieceDrag,
@@ -304,22 +392,32 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     lightSquareStyle: { background: FLAT_2D_BOARD_COLORS.light },
     darkSquareStyle: { background: FLAT_2D_BOARD_COLORS.dark },
     squareStyles,
-    pieces: history.isViewingHistory ? basePieces : pieces,
+    pieces: history.isViewingHistory ? historyPieces : pieces,
   };
 
   let turnLabel;
   if (isOver) turnLabel = STATUS_LABEL[gameState.status];
   else if (!connected) turnLabel = "Reconnecting…";
-  else turnLabel = isMyTurn ? "Your move" : "Opponent's move";
+  else if (isMyTurn) turnLabel = "Your move";
+  else turnLabel = premove ? "Opponent's move — premove queued" : "Opponent's move";
 
   return (
     <div className="custom-play">
       <div className="custom-play-toolbar">
         <span className="custom-play-turn">{turnLabel}</span>
-        <button type="button" onClick={onExit}>
-          New Game
-        </button>
+        <div className="custom-play-toolbar-actions">
+          {premove && (
+            <button type="button" onClick={() => setPremove(null)} title="Cancel the queued premove">
+              Cancel Premove
+            </button>
+          )}
+          <button type="button" onClick={onExit}>
+            New Game
+          </button>
+        </div>
       </div>
+
+      {capturedRows.theirs}
 
       <div className="board-wrap custom-play-board">
         {history.isViewingHistory ? (
@@ -331,6 +429,8 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         )}
         <Chessboard options={options} />
       </div>
+
+      {capturedRows.mine}
 
       <div className="move-history-nav">
         <button type="button" onClick={history.goBack} disabled={!history.canGoBack} title="Previous move">
