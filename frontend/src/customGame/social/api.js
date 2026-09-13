@@ -89,6 +89,22 @@ export function postSimulSubmit(roomId, payload) {
   }).then(handle);
 }
 
+export function postSimulAccept(roomId, token) {
+  return fetch(`${API_BASE}/simul-room/${encodeURIComponent(roomId)}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  }).then(handle);
+}
+
+export function postSimulDecline(roomId, token) {
+  return fetch(`${API_BASE}/simul-room/${encodeURIComponent(roomId)}/decline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  }).then(handle);
+}
+
 export function presenceWsUrl(token) {
   const wsRoot = API_ROOT.replace(/^http/, "ws");
   return `${wsRoot}/api/social/presence/ws?token=${encodeURIComponent(token)}`;

@@ -7,9 +7,11 @@ import HubWorld from "./hub/HubWorld";
 import { useHubState } from "./hub/useHubState";
 import FriendsPanel from "./social/FriendsPanel";
 import SimulWaitingRoom from "./social/SimulWaitingRoom";
+import ChallengeWaitingForAccept from "./social/ChallengeWaitingForAccept";
+import IncomingChallengePrompt from "./social/IncomingChallengePrompt";
 import PuzzleRush from "./puzzleRush/PuzzleRush";
 import { usePresence } from "./social/usePresence";
-import { postLogout } from "./social/api";
+import { postLogout, postSimulAccept, postSimulDecline } from "./social/api";
 import { clearAuth } from "./social/authStore";
 import "./customGame.css";
 import "./deckBuilder.css";
@@ -62,24 +64,58 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
   // which the presence socket alone doesn't carry (see FriendsPanel).
   const [visitingFriend, setVisitingFriend] = useState(null);
   const [inPuzzleRush, setInPuzzleRush] = useState(false);
-  // A friend challenge, mine to draft for right now - set the instant a
-  // challenge is sent or received (see FriendsPanel/usePresence's
-  // onChallenge below), since both sides draft simultaneously with no
-  // separate accept step: {roomId, myColor, myToken, opponentUsername,
-  // waiting}. `waiting` flips true once I've submitted my own deck and am
-  // sitting in SimulWaitingRoom for the other side to finish theirs.
+  // A friend challenge I've been sent, awaiting MY accept/decline:
+  // {roomId, blackToken, fromUsername}. Rendered as an always-on-top prompt
+  // (see IncomingChallengePrompt) regardless of whatever else is on screen.
+  const [incomingChallenge, setIncomingChallenge] = useState(null);
+  // A friend challenge I sent, awaiting THEIR accept/decline:
+  // {roomId, whiteToken, toUsername, declined}. Only moves forward via the
+  // onChallengeAccepted/onChallengeDeclined presence pushes below - there's
+  // nothing to poll here.
+  const [awaitingChallenge, setAwaitingChallenge] = useState(null);
+  // A friend challenge that's been accepted and is ready to draft for:
+  // {roomId, myColor, myToken, opponentUsername, waiting}. `waiting` flips
+  // true once I've submitted my own deck and am sitting in
+  // SimulWaitingRoom for the other side to finish theirs.
   const [simulRoom, setSimulRoom] = useState(null);
 
   const presence = usePresence(auth.token, auth.user.id, {
     onChallenge: (msg) =>
-      setSimulRoom({
-        roomId: msg.room_id,
-        myColor: "black",
-        myToken: msg.black_token,
-        opponentUsername: msg.from.username,
-        waiting: false,
+      setIncomingChallenge({ roomId: msg.room_id, blackToken: msg.black_token, fromUsername: msg.from.username }),
+    onChallengeAccepted: (msg) =>
+      setAwaitingChallenge((prev) => {
+        if (!prev || prev.roomId !== msg.room_id) return prev;
+        setSimulRoom({
+          roomId: prev.roomId,
+          myColor: "white",
+          myToken: prev.whiteToken,
+          opponentUsername: prev.toUsername,
+          waiting: false,
+        });
+        return null;
       }),
+    onChallengeDeclined: (msg) =>
+      setAwaitingChallenge((prev) => (prev && prev.roomId === msg.room_id ? { ...prev, declined: true } : prev)),
   });
+
+  function handleAcceptChallenge() {
+    const challenge = incomingChallenge;
+    return postSimulAccept(challenge.roomId, challenge.blackToken).then(() => {
+      setSimulRoom({
+        roomId: challenge.roomId,
+        myColor: "black",
+        myToken: challenge.blackToken,
+        opponentUsername: challenge.fromUsername,
+        waiting: false,
+      });
+      setIncomingChallenge(null);
+    });
+  }
+
+  function handleDeclineChallenge() {
+    const challenge = incomingChallenge;
+    return postSimulDecline(challenge.roomId, challenge.blackToken).then(() => setIncomingChallenge(null));
+  }
 
   function handleOnlineGameCreated({ room_id, white_token }) {
     const next = { stage: "waiting", roomId: room_id, whiteToken: white_token };
@@ -137,7 +173,7 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
 
   function handleChallengeSent(challenge) {
     hub.setActiveOverlay(null);
-    setSimulRoom({ ...challenge, waiting: false });
+    setAwaitingChallenge({ roomId: challenge.roomId, whiteToken: challenge.myToken, toUsername: challenge.opponentUsername });
   }
 
   function handleSimulWaiting() {
@@ -157,7 +193,12 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
   let content;
   if (session?.stage === "waiting") {
     content = (
-      <OnlineWaitingRoom roomId={session.roomId} whiteToken={session.whiteToken} onGameReady={handleWaitingRoomGameReady} />
+      <OnlineWaitingRoom
+        roomId={session.roomId}
+        whiteToken={session.whiteToken}
+        onGameReady={handleWaitingRoomGameReady}
+        onExit={handleExit}
+      />
     );
   } else if (session?.stage === "playing") {
     content = (
@@ -169,8 +210,28 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
       />
     );
   } else if (joinRoomId) {
-    // A fresh join link - draft black's deck first.
-    content = <DeckBuilder joinMode roomId={joinRoomId} onOnlineDeckSubmitted={handleOnlineDeckSubmitted} />;
+    // A fresh join link - draft black's deck first. joinGameId is captured
+    // once from the URL at mount (see App.jsx) and never changes after, so
+    // leaving this flow means an actual navigation, not just clearing local
+    // state - drops the ?join=... param and reloads to a clean hub landing.
+    content = (
+      <DeckBuilder
+        joinMode
+        roomId={joinRoomId}
+        onOnlineDeckSubmitted={handleOnlineDeckSubmitted}
+        onExit={() => {
+          window.location.href = window.location.pathname;
+        }}
+      />
+    );
+  } else if (awaitingChallenge) {
+    content = (
+      <ChallengeWaitingForAccept
+        toUsername={awaitingChallenge.toUsername}
+        declined={Boolean(awaitingChallenge.declined)}
+        onExit={() => setAwaitingChallenge(null)}
+      />
+    );
   } else if (simulRoom?.waiting) {
     content = (
       <SimulWaitingRoom
@@ -179,13 +240,19 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
         myToken={simulRoom.myToken}
         opponentUsername={simulRoom.opponentUsername}
         onGameReady={handleSimulGameReady}
+        onExit={() => setSimulRoom(null)}
       />
     );
   } else if (simulRoom) {
     // A friend challenge, sent or received - draft simultaneously with
     // whoever's on the other end (see the comment on simulRoom's state).
     content = (
-      <DeckBuilder simulRoom={simulRoom} onSimulWaiting={handleSimulWaiting} onSimulGameReady={handleSimulGameReady} />
+      <DeckBuilder
+        simulRoom={simulRoom}
+        onSimulWaiting={handleSimulWaiting}
+        onSimulGameReady={handleSimulGameReady}
+        onExit={() => setSimulRoom(null)}
+      />
     );
   } else if (game) {
     content = <CustomGamePlay initialGame={game} onExit={handleExit} />;
@@ -235,5 +302,16 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     );
   }
 
-  return <div className="hero-chess-app">{content}</div>;
+  return (
+    <div className="hero-chess-app">
+      {content}
+      {incomingChallenge && (
+        <IncomingChallengePrompt
+          fromUsername={incomingChallenge.fromUsername}
+          onAccept={handleAcceptChallenge}
+          onDecline={handleDeclineChallenge}
+        />
+      )}
+    </div>
+  );
 }

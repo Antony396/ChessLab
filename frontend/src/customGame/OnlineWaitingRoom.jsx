@@ -5,7 +5,7 @@ import { onlineRoomWsUrl } from "./api";
 // drafts a deck and joins - the server broadcasts the finished game over
 // this room-level socket the moment that happens, and this component hands
 // off to actual play.
-export default function OnlineWaitingRoom({ roomId, whiteToken, onGameReady }) {
+export default function OnlineWaitingRoom({ roomId, whiteToken, onGameReady, onExit }) {
   const [connected, setConnected] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const reconnectTimer = useRef(null);
@@ -54,6 +54,9 @@ export default function OnlineWaitingRoom({ roomId, whiteToken, onGameReady }) {
     <div className="custom-play">
       <div className="custom-play-toolbar">
         <span className="custom-play-turn">{connected ? "Waiting for opponent…" : "Connecting…"}</span>
+        <button type="button" onClick={onExit}>
+          Home
+        </button>
       </div>
       <div className="online-waiting-panel">
         <p>Share this link with your opponent - they'll build their own deck for black:</p>

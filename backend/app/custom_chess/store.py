@@ -93,11 +93,20 @@ class SimulRoom:
     id: str
     white_token: str
     black_token: str
+    # Whoever sent the challenge (always White here) - needed purely so
+    # accepting/declining can notify THEM specifically over their presence
+    # connection, since the accept/decline request only ever carries the
+    # recipient's own token, not the challenger's identity.
+    challenger_id: str
     white_back_rank: Optional[dict[str, str]] = None
     white_evolved_squares: Optional[list[str]] = None
     black_back_rank: Optional[dict[str, str]] = None
     black_evolved_squares: Optional[list[str]] = None
     game_id: Optional[str] = None
+    # True once the recipient has accepted - both sides only enter the deck
+    # builder after this, restoring an explicit accept step in front of the
+    # simultaneous-drafting flow.
+    accepted: bool = False
 
 
 _GAMES: dict[str, CustomGame] = {}
@@ -161,11 +170,15 @@ def get_room(room_id: str) -> Optional[PendingRoom]:
     return _ROOMS.get(room_id)
 
 
-def create_simul_room(white_token: str, black_token: str) -> SimulRoom:
-    room = SimulRoom(id=uuid.uuid4().hex, white_token=white_token, black_token=black_token)
+def create_simul_room(white_token: str, black_token: str, challenger_id: str) -> SimulRoom:
+    room = SimulRoom(id=uuid.uuid4().hex, white_token=white_token, black_token=black_token, challenger_id=challenger_id)
     _SIMUL_ROOMS[room.id] = room
     return room
 
 
 def get_simul_room(room_id: str) -> Optional[SimulRoom]:
     return _SIMUL_ROOMS.get(room_id)
+
+
+def remove_simul_room(room_id: str) -> None:
+    _SIMUL_ROOMS.pop(room_id, None)

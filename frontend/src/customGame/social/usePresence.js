@@ -8,14 +8,22 @@ import { presenceWsUrl } from "./api";
 // via callbacks rather than state, since those are one-off events for the
 // caller to react to (show a modal, refetch a list), not something to
 // re-render around here.
-export function usePresence(token, userId, { onChallenge, onFriendRequest } = {}) {
+export function usePresence(
+  token,
+  userId,
+  { onChallenge, onChallengeAccepted, onChallengeDeclined, onFriendRequest } = {}
+) {
   const [dormOwnerId, setDormOwnerId] = useState(userId);
   const [occupants, setOccupants] = useState({}); // user_id -> {username,x,y,facing,skin}
   const [connected, setConnected] = useState(false);
   const wsRef = useRef(null);
   const onChallengeRef = useRef(onChallenge);
+  const onChallengeAcceptedRef = useRef(onChallengeAccepted);
+  const onChallengeDeclinedRef = useRef(onChallengeDeclined);
   const onFriendRequestRef = useRef(onFriendRequest);
   onChallengeRef.current = onChallenge;
+  onChallengeAcceptedRef.current = onChallengeAccepted;
+  onChallengeDeclinedRef.current = onChallengeDeclined;
   onFriendRequestRef.current = onFriendRequest;
 
   useEffect(() => {
@@ -59,6 +67,12 @@ export function usePresence(token, userId, { onChallenge, onFriendRequest } = {}
             break;
           case "challenge":
             onChallengeRef.current?.(msg);
+            break;
+          case "challenge_accepted":
+            onChallengeAcceptedRef.current?.(msg);
+            break;
+          case "challenge_declined":
+            onChallengeDeclinedRef.current?.(msg);
             break;
           case "friend_request":
             onFriendRequestRef.current?.(msg);

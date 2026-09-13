@@ -6,7 +6,7 @@ import { simulRoomWsUrl } from "./api";
 // FriendsPanel.jsx/HeroChessApp.jsx), so whoever finishes first just lands
 // here and waits - there's no link to share, since the opponent is
 // already a known friend who's drafting their own deck right now too.
-export default function SimulWaitingRoom({ roomId, myColor, myToken, opponentUsername, onGameReady }) {
+export default function SimulWaitingRoom({ roomId, myColor, myToken, opponentUsername, onGameReady, onExit }) {
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
 
@@ -45,6 +45,9 @@ export default function SimulWaitingRoom({ roomId, myColor, myToken, opponentUse
     <div className="custom-play">
       <div className="custom-play-toolbar">
         <span className="custom-play-turn">{connected ? "Waiting for opponent…" : "Connecting…"}</span>
+        <button type="button" onClick={onExit}>
+          Home
+        </button>
       </div>
       <div className="online-waiting-panel">
         <p>

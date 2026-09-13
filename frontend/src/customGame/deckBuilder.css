@@ -3,6 +3,30 @@
   margin: 0 auto;
 }
 
+.deck-builder-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.deck-builder-toolbar button {
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.deck-builder-toolbar button:hover {
+  border-color: var(--hc-border-strong);
+  background: var(--hc-surface-strong);
+}
+
 /* Points meter: label / progress track / fractional counter. */
 .points-bar {
   display: flex;

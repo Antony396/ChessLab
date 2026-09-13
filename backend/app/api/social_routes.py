@@ -36,6 +36,7 @@ from app.social.models import (
     LoginRequest,
     RegisterRequest,
     SendFriendRequestPayload,
+    SimulRespondRequest,
     SimulSubmitRequest,
     UserPublic,
     UserSearchResult,
@@ -187,13 +188,14 @@ def list_friends(user_id: str = Depends(get_current_user_id)):
 #
 # Unlike the shareable-link online-room flow (custom_chess/store.py's
 # PendingRoom, always seeded with white's already-drafted deck), a
-# friend-to-friend challenge starts empty on both sides and drafting
-# happens simultaneously: the instant the challenge is sent, the
-# challenger goes to their own deck builder, and the target's presence
-# connection gets pushed straight into theirs too (see the "challenge" WS
-# message below) - no separate accept step gating drafting, since this is
-# already a friend-to-friend action. Whoever finishes first just waits
-# (see /simul-room/{id}/ws) for the other.
+# friend-to-friend challenge starts empty on both sides. The recipient must
+# explicitly accept before either side sees a deck builder - the challenger
+# sits on a "waiting for accept" screen (pushed forward by the
+# "challenge_accepted" WS message below) rather than drafting alone in the
+# meantime, so drafting genuinely starts for both sides together, right
+# after acceptance, same as before this gate was added. A decline instead
+# sends "challenge_declined" and tears the room down. Whoever finishes
+# drafting first just waits (see /simul-room/{id}/ws) for the other.
 
 
 @router.post("/challenge", response_model=ChallengeResponse)
@@ -203,7 +205,7 @@ async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get
 
     white_token = uuid.uuid4().hex
     black_token = uuid.uuid4().hex
-    room = game_store.create_simul_room(white_token, black_token)
+    room = game_store.create_simul_room(white_token, black_token, challenger_id=user_id)
 
     challenger = db.get_user_by_id(user_id)
     delivered = False
@@ -224,6 +226,42 @@ async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get
     return ChallengeResponse(room_id=room.id, white_token=white_token, delivered=delivered)
 
 
+@router.post("/simul-room/{room_id}/accept")
+async def accept_simul_challenge(room_id: str, payload: SimulRespondRequest):
+    room = game_store.get_simul_room(room_id)
+    if room is None:
+        raise HTTPException(404, "Room not found")
+    if payload.token != room.black_token:
+        raise HTTPException(403, "Invalid token")
+
+    room.accepted = True
+    for conn in store.connections_for_user(room.challenger_id):
+        try:
+            await conn.websocket.send_json({"type": "challenge_accepted", "room_id": room.id})
+        except Exception:
+            pass
+
+    return {"accepted": True}
+
+
+@router.post("/simul-room/{room_id}/decline")
+async def decline_simul_challenge(room_id: str, payload: SimulRespondRequest):
+    room = game_store.get_simul_room(room_id)
+    if room is None:
+        raise HTTPException(404, "Room not found")
+    if payload.token != room.black_token:
+        raise HTTPException(403, "Invalid token")
+
+    game_store.remove_simul_room(room_id)
+    for conn in store.connections_for_user(room.challenger_id):
+        try:
+            await conn.websocket.send_json({"type": "challenge_declined", "room_id": room.id})
+        except Exception:
+            pass
+
+    return {"declined": True}
+
+
 @router.post("/simul-room/{room_id}/submit")
 async def submit_simul_deck(room_id: str, payload: SimulSubmitRequest):
     room = game_store.get_simul_room(room_id)
@@ -231,6 +269,8 @@ async def submit_simul_deck(room_id: str, payload: SimulSubmitRequest):
         raise HTTPException(404, "Room not found")
     if room.game_id is not None:
         raise HTTPException(400, "This game has already started")
+    if not room.accepted:
+        raise HTTPException(400, "This challenge hasn't been accepted yet")
 
     if payload.token == room.white_token:
         if room.white_back_rank is not None:

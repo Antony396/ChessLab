@@ -43,41 +43,55 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const mirrorMimicType = gameState.black_last_moved_type ? gameState.black_last_moved_type.toLowerCase() : null;
   const mirrorMimicIsHydra = gameState.black_last_moved_was_hydra;
 
-  function showLegalDestinationsFor(square) {
+  // Works for either color, not just White's - a click-to-preview should
+  // show what the computer's own pieces could do too. handlePieceDrop/
+  // tryOptimisticFen below stay hardcoded to White's own fields, since
+  // those are only ever about the human's own move.
+  function showLegalDestinationsFor(square, colorPrefix) {
+    const isWhite = colorPrefix === "w";
+    const dragonSquare = isWhite ? gameState.white_dragon_square : gameState.black_dragon_square;
+    const wizardSquares = (isWhite ? gameState.white_wizard_squares : gameState.black_wizard_squares) || [];
+    const archerSquares = (isWhite ? whiteArcherSquares : gameState.black_archer_squares) || [];
+    const hydraSquares = (isWhite ? whiteHydraSquares : gameState.black_hydra_squares) || [];
+    const cyclopsSquares = (isWhite ? whiteCyclopsSquares : gameState.black_cyclops_squares) || [];
+    const mirrorSquares = (isWhite ? whiteMirrorSquares : gameState.black_mirror_squares) || [];
+    const opponentLastType = isWhite ? gameState.black_last_moved_type : gameState.white_last_moved_type;
+    const mimicIsHydra = isWhite ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
         square,
-        isDragonSquare: square === gameState.white_dragon_square,
-        isWizardSquare: whiteWizardSquares.includes(square),
-        isArcherSquare: whiteArcherSquares.includes(square),
-        isHydraSquare: whiteHydraSquares.includes(square),
-        isCyclopsSquare: whiteCyclopsSquares.includes(square),
-        isMirrorSquare: whiteMirrorSquares.includes(square),
-        mirrorMimicType,
-        mirrorMimicIsHydra,
+        isDragonSquare: square === dragonSquare,
+        isWizardSquare: wizardSquares.includes(square),
+        isArcherSquare: archerSquares.includes(square),
+        isHydraSquare: hydraSquares.includes(square),
+        isCyclopsSquare: cyclopsSquares.includes(square),
+        isMirrorSquare: mirrorSquares.includes(square),
+        mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
+        mirrorMimicIsHydra: mimicIsHydra,
       })
     );
   }
 
-  function handlePieceDrag({ isSparePiece, square }) {
+  function handlePieceDrag({ isSparePiece, square, piece }) {
     if (isSparePiece || !square) return;
     setSelectedSquare(square);
-    showLegalDestinationsFor(square);
+    showLegalDestinationsFor(square, piece.pieceType[0]);
   }
 
-  // Clicking a piece (without necessarily dragging it) previews its legal
-  // destinations the same way starting a drag does - clicking the same
-  // piece again, or an empty/enemy square, clears the preview.
+  // Previewing works for either side's pieces, and regardless of whether a
+  // move is currently in flight - it's a read-only hint, not an action, so
+  // it shouldn't be gated the way actually dropping a piece is (see
+  // handlePieceDrop's own guard for that).
   function handleSquareClick({ piece, square }) {
-    if (moving || isOver) return;
-    if (selectedSquare === square || !piece || piece.pieceType[0] !== "w") {
+    if (isOver) return;
+    if (selectedSquare === square || !piece) {
       setSelectedSquare(null);
       setLegalDestinations([]);
       return;
     }
     setSelectedSquare(square);
-    showLegalDestinationsFor(square);
+    showLegalDestinationsFor(square, piece.pieceType[0]);
   }
 
   function handlePieceDrop({ sourceSquare, targetSquare, piece }) {

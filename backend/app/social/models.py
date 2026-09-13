@@ -65,3 +65,9 @@ class SimulSubmitRequest(BaseModel):
     token: str
     back_rank: dict[str, str]
     evolved_squares: list[str] = []
+
+
+# The recipient accepts/declines with just their own black_token - same
+# "token proves who you are" idea as SimulSubmitRequest, no re-auth needed.
+class SimulRespondRequest(BaseModel):
+    token: str

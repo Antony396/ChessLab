@@ -96,8 +96,8 @@ export default function FriendsPanel({ token, onVisit, onChallenge }) {
     }
   }
 
-  // Sent the instant you click - both sides draft simultaneously (see
-  // HeroChessApp.jsx), so there's no separate accept step gating drafting.
+  // Sent the instant you click, but the friend still has to accept before
+  // either side sees a deck builder - see HeroChessApp.jsx's awaitingChallenge.
   async function handleChallenge(friend) {
     setError(null);
     try {

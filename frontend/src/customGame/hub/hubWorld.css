@@ -640,3 +640,24 @@
   color: var(--hc-text);
 }
 
+.challenge-prompt-backdrop {
+  z-index: 60; /* above a station overlay (z-index 50), if one happens to be open underneath */
+  align-items: center;
+}
+
+.challenge-prompt-panel {
+  max-width: 420px;
+}
+
+.challenge-prompt-text {
+  color: var(--hc-text-h);
+  margin: 4px 0 20px;
+  text-align: center;
+}
+
+.challenge-prompt-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+

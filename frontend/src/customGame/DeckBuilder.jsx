@@ -456,6 +456,10 @@ export default function DeckBuilder({
   simulRoom,
   onSimulWaiting,
   onSimulGameReady,
+  // Only passed for the standalone usages (a join link, a friend challenge) -
+  // the hub-triggered station overlay already has its own "×" close button
+  // wrapping this component, so it doesn't pass one to avoid a duplicate.
+  onExit,
 }) {
   // A friend challenge drafts on whichever rank actually matches my color
   // in that room (White = rank 1, Black = rank 8, same as joinMode's
@@ -714,6 +718,13 @@ export default function DeckBuilder({
 
   return (
     <div className="deck-builder">
+      {onExit && (
+        <div className="deck-builder-toolbar">
+          <button type="button" onClick={onExit}>
+            Home
+          </button>
+        </div>
+      )}
       <div className={`points-bar${overBudget ? " over" : ""}${atFullBudget ? " full" : ""}`}>
         <span className="points-bar-label">Deck Budget</span>
         <div className="points-bar-track">
