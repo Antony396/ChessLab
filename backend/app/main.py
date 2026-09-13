@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.custom_game_routes import router as custom_game_router
 from app.api.online_game_routes import router as online_game_router
+from app.api.puzzle_rush_routes import router as puzzle_rush_router
 from app.api.routes import router
 from app.api.social_routes import router as social_router
 from app.custom_chess.ai import shutdown_engine
@@ -43,3 +44,4 @@ app.include_router(router, prefix="/api")
 app.include_router(custom_game_router, prefix="/api/game")
 app.include_router(online_game_router, prefix="/api/game")
 app.include_router(social_router, prefix="/api/social")
+app.include_router(puzzle_rush_router, prefix="/api/puzzle-rush")

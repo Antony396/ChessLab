@@ -4,6 +4,7 @@ import {
   declineFriendRequest,
   listFriendRequests,
   listFriends,
+  postChallenge,
   searchUsers,
   sendFriendRequest,
 } from "./api";
@@ -95,6 +96,18 @@ export default function FriendsPanel({ token, onVisit, onChallenge }) {
     }
   }
 
+  // Sent the instant you click - both sides draft simultaneously (see
+  // HeroChessApp.jsx), so there's no separate accept step gating drafting.
+  async function handleChallenge(friend) {
+    setError(null);
+    try {
+      const result = await postChallenge(token, { to_user_id: friend.id });
+      onChallenge({ roomId: result.room_id, myColor: "white", myToken: result.white_token, opponentUsername: friend.username });
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <div className="friends-panel">
       <div className="friends-search">
@@ -164,7 +177,7 @@ export default function FriendsPanel({ token, onVisit, onChallenge }) {
                   <button
                     type="button"
                     disabled={!f.online}
-                    onClick={() => onChallenge(f)}
+                    onClick={() => handleChallenge(f)}
                     title={f.online ? "" : "Offline"}
                   >
                     Challenge

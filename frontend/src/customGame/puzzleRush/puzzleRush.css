@@ -1,0 +1,125 @@
+.puzzle-rush {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.puzzle-rush-menu {
+  max-width: 420px;
+  margin: 40px auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.puzzle-rush-menu h1 {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+  background: linear-gradient(135deg, #fff 0%, var(--hc-gold) 60%, var(--hc-gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.puzzle-rush-menu p {
+  color: var(--hc-text);
+  margin: 0;
+}
+
+.puzzle-rush-final-score {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 64px;
+  color: var(--hc-gold);
+  margin: 4px 0 0;
+  line-height: 1;
+}
+
+.puzzle-rush-menu-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.puzzle-rush-menu-buttons button {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 11px 22px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffd873, #f5c542 60%, #e0a82e);
+  color: #1c1400;
+  cursor: pointer;
+}
+
+.puzzle-rush-back-btn {
+  margin-top: 4px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.puzzle-rush-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 480px;
+  justify-content: space-between;
+}
+
+.puzzle-rush-timer {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--hc-text-h);
+  min-width: 60px;
+}
+
+.puzzle-rush-timer.low {
+  color: var(--hc-danger);
+}
+
+.puzzle-rush-score {
+  font-weight: 600;
+  color: var(--hc-text-h);
+}
+
+.puzzle-rush-toolbar button {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 16px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.puzzle-rush-board-wrap {
+  width: 100%;
+  max-width: 480px;
+  border-radius: 6px;
+  transition: box-shadow 0.15s ease;
+}
+
+.puzzle-rush-board-wrap.flash-correct {
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.7);
+}
+
+.puzzle-rush-board-wrap.flash-wrong {
+  box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.7);
+}

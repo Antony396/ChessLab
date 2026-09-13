@@ -141,6 +141,24 @@ function LogoutButton({ onClick }) {
   );
 }
 
+function PuzzleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 9a2 2 0 0 1 2-2h1.2a1.8 1.8 0 1 0 0-3.4V3a2 2 0 0 1 2-2h1.6a2 2 0 0 1 2 2v.6a1.8 1.8 0 1 0 0 3.4H14a2 2 0 0 1 2 2v1.2a1.8 1.8 0 1 1 0 3.6V11" />
+      <path d="M4 9v6a2 2 0 0 0 2 2h1.2a1.8 1.8 0 1 1 0 3.4V21a2 2 0 0 0 2 2h1.6a2 2 0 0 0 2-2v-.6a1.8 1.8 0 1 1 3.4 0 2 2 0 0 0 2-2v-4" />
+    </svg>
+  );
+}
+
+function PuzzleRushButton({ onClick }) {
+  return (
+    <button type="button" className="hub-friends-toggle" onClick={onClick} title="Puzzle Rush">
+      <PuzzleIcon />
+      <span>Puzzles</span>
+    </button>
+  );
+}
+
 // Shown instead of the pedestal while visiting someone else's dorm - the
 // pedestal itself is hidden then (queuing a match from inside someone
 // else's room would be ambiguous about whose deck/turn it even is), and
@@ -170,7 +188,7 @@ function VisitingBanner({ username, onReturnHome }) {
 // HeroChessApp, since it needs the friend's username which presence alone
 // doesn't carry) is who this dorm actually belongs to right now, if not
 // the signed-in player themself.
-export default function HubWorld({ hub, username, presence, visiting, onReturnHome, onOpenFriends, onLogout }) {
+export default function HubWorld({ hub, username, presence, visiting, onReturnHome, onOpenFriends, onOpenPuzzleRush, onLogout }) {
   const equippedSkin = useEquippedSkin();
   const skin = KING_SKINS[equippedSkin];
   const isVisiting = Boolean(visiting);
@@ -211,6 +229,7 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
         <PlayerProfileBadge username={username} />
         <SkinPicker />
         <FriendsButton onClick={onOpenFriends} />
+        <PuzzleRushButton onClick={onOpenPuzzleRush} />
         <LogoutButton onClick={onLogout} />
       </div>
       <div className="hub-room-wrap">

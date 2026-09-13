@@ -6,6 +6,8 @@ import OnlineGamePlay from "./OnlineGamePlay";
 import HubWorld from "./hub/HubWorld";
 import { useHubState } from "./hub/useHubState";
 import FriendsPanel from "./social/FriendsPanel";
+import SimulWaitingRoom from "./social/SimulWaitingRoom";
+import PuzzleRush from "./puzzleRush/PuzzleRush";
 import { usePresence } from "./social/usePresence";
 import { postLogout } from "./social/api";
 import { clearAuth } from "./social/authStore";
@@ -59,20 +61,24 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
   // here (not in usePresence) because it needs the friend's username,
   // which the presence socket alone doesn't carry (see FriendsPanel).
   const [visitingFriend, setVisitingFriend] = useState(null);
-  // Set when challenging a specific friend from the Friends panel, so the
-  // deck-builder overlay (opened the same way as a normal "Play a Game")
-  // knows to send a direct challenge instead of showing the usual
-  // vs-Computer/Play Online buttons.
-  const [challengeTarget, setChallengeTarget] = useState(null);
-  // A challenge someone just sent *to* me, waiting on Accept/Decline.
-  const [pendingChallenge, setPendingChallenge] = useState(null);
-  // Set when I accept an incoming challenge - from here on it behaves
-  // exactly like having opened a `?join=<roomId>` link.
-  const [manualJoinRoomId, setManualJoinRoomId] = useState(null);
-  const effectiveJoinRoomId = joinRoomId || manualJoinRoomId;
+  const [inPuzzleRush, setInPuzzleRush] = useState(false);
+  // A friend challenge, mine to draft for right now - set the instant a
+  // challenge is sent or received (see FriendsPanel/usePresence's
+  // onChallenge below), since both sides draft simultaneously with no
+  // separate accept step: {roomId, myColor, myToken, opponentUsername,
+  // waiting}. `waiting` flips true once I've submitted my own deck and am
+  // sitting in SimulWaitingRoom for the other side to finish theirs.
+  const [simulRoom, setSimulRoom] = useState(null);
 
   const presence = usePresence(auth.token, auth.user.id, {
-    onChallenge: (msg) => setPendingChallenge(msg),
+    onChallenge: (msg) =>
+      setSimulRoom({
+        roomId: msg.room_id,
+        myColor: "black",
+        myToken: msg.black_token,
+        opponentUsername: msg.from.username,
+        waiting: false,
+      }),
   });
 
   function handleOnlineGameCreated({ room_id, white_token }) {
@@ -93,11 +99,10 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
       initialGame: joined,
       myColor: "black",
       myToken: joined.black_token,
-      roomId: effectiveJoinRoomId,
+      roomId: joinRoomId,
     };
     setSession(next);
     storeSession(next);
-    setManualJoinRoomId(null);
   }
 
   function handleExit() {
@@ -116,7 +121,6 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
 
   function handleOnlineGameCreatedFromHub(payload) {
     hub.setActiveOverlay(null);
-    setChallengeTarget(null);
     handleOnlineGameCreated(payload);
   }
 
@@ -131,14 +135,18 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     setVisitingFriend(null);
   }
 
-  function handleChallengeFriend(friend) {
-    setChallengeTarget(friend);
-    hub.setActiveOverlay("match-queue");
+  function handleChallengeSent(challenge) {
+    hub.setActiveOverlay(null);
+    setSimulRoom({ ...challenge, waiting: false });
   }
 
-  function handleAcceptChallenge() {
-    setManualJoinRoomId(pendingChallenge.room_id);
-    setPendingChallenge(null);
+  function handleSimulWaiting() {
+    setSimulRoom((prev) => (prev ? { ...prev, waiting: true } : prev));
+  }
+
+  function handleSimulGameReady({ initialGame, myColor, myToken, roomId }) {
+    setSimulRoom(null);
+    handleWaitingRoomGameReady({ initialGame, myColor, myToken, roomId });
   }
 
   function handleLogout() {
@@ -160,11 +168,29 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
         onExit={handleExit}
       />
     );
-  } else if (effectiveJoinRoomId) {
-    // A fresh join link (or an accepted challenge) - draft black's deck first.
-    content = <DeckBuilder joinMode roomId={effectiveJoinRoomId} onOnlineDeckSubmitted={handleOnlineDeckSubmitted} />;
+  } else if (joinRoomId) {
+    // A fresh join link - draft black's deck first.
+    content = <DeckBuilder joinMode roomId={joinRoomId} onOnlineDeckSubmitted={handleOnlineDeckSubmitted} />;
+  } else if (simulRoom?.waiting) {
+    content = (
+      <SimulWaitingRoom
+        roomId={simulRoom.roomId}
+        myColor={simulRoom.myColor}
+        myToken={simulRoom.myToken}
+        opponentUsername={simulRoom.opponentUsername}
+        onGameReady={handleSimulGameReady}
+      />
+    );
+  } else if (simulRoom) {
+    // A friend challenge, sent or received - draft simultaneously with
+    // whoever's on the other end (see the comment on simulRoom's state).
+    content = (
+      <DeckBuilder simulRoom={simulRoom} onSimulWaiting={handleSimulWaiting} onSimulGameReady={handleSimulGameReady} />
+    );
   } else if (game) {
     content = <CustomGamePlay initialGame={game} onExit={handleExit} />;
+  } else if (inPuzzleRush) {
+    content = <PuzzleRush token={auth.token} onExit={() => setInPuzzleRush(false)} />;
   } else {
     // Default landing spot: the dorm room hub. Walking to (or clicking) the
     // pedestal - the single place to queue up for a game - opens the
@@ -172,7 +198,7 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     // replacing it - closing the overlay without starting a match just
     // returns to the hub, in place, with the avatar exactly where it was
     // left.
-    const overlayTitle = hub.activeOverlay === "friends" ? "Friends" : challengeTarget ? `Challenge ${challengeTarget.username}` : "Play a Game";
+    const overlayTitle = hub.activeOverlay === "friends" ? "Friends" : "Play a Game";
     content = (
       <>
         <HubWorld
@@ -182,58 +208,26 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
           visiting={visitingFriend}
           onReturnHome={handleReturnHome}
           onOpenFriends={() => hub.setActiveOverlay("friends")}
+          onOpenPuzzleRush={() => setInPuzzleRush(true)}
           onLogout={handleLogout}
         />
         {hub.activeOverlay && (
-          <div
-            className="hub-overlay-backdrop"
-            onClick={() => {
-              hub.setActiveOverlay(null);
-              setChallengeTarget(null);
-            }}
-          >
+          <div className="hub-overlay-backdrop" onClick={() => hub.setActiveOverlay(null)}>
             <div className="hub-overlay-panel" onClick={(e) => e.stopPropagation()}>
               <span className="hub-overlay-title">{overlayTitle}</span>
               <button
                 type="button"
                 className="hub-overlay-close"
-                onClick={() => {
-                  hub.setActiveOverlay(null);
-                  setChallengeTarget(null);
-                }}
+                onClick={() => hub.setActiveOverlay(null)}
                 title="Back to the hub"
               >
                 ×
               </button>
               {hub.activeOverlay === "friends" ? (
-                <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeFriend} />
+                <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeSent} />
               ) : (
-                <DeckBuilder
-                  onGameStarted={handleGameStartedFromHub}
-                  onOnlineGameCreated={handleOnlineGameCreatedFromHub}
-                  challengeTarget={challengeTarget}
-                  authToken={auth.token}
-                />
+                <DeckBuilder onGameStarted={handleGameStartedFromHub} onOnlineGameCreated={handleOnlineGameCreatedFromHub} />
               )}
-            </div>
-          </div>
-        )}
-
-        {pendingChallenge && (
-          <div className="hub-overlay-backdrop">
-            <div className="hub-overlay-panel challenge-modal-panel">
-              <span className="hub-overlay-title">Challenge</span>
-              <p className="challenge-modal-text">
-                <strong>{pendingChallenge.from.username}</strong> challenged you to a match.
-              </p>
-              <div className="challenge-modal-actions">
-                <button type="button" className="challenge-accept-btn" onClick={handleAcceptChallenge}>
-                  Accept
-                </button>
-                <button type="button" className="challenge-decline-btn" onClick={() => setPendingChallenge(null)}>
-                  Decline
-                </button>
-              </div>
             </div>
           </div>
         )}

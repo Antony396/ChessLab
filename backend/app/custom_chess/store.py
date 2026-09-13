@@ -71,8 +71,30 @@ class PendingRoom:
     game_id: Optional[str] = None
 
 
+@dataclass
+class SimulRoom:
+    """A friend-to-friend challenge, accepted before either side has
+    drafted anything - unlike PendingRoom (always seeded with white's
+    already-drafted deck, from the shareable-link flow), both sides here
+    start out empty and submit independently, in whichever order they
+    finish drafting. Promoted to a real CustomGame the moment both have.
+    Both tokens are minted up front (at challenge time), since both
+    players' identities are already known - there's no "second player
+    joins with a link" step to mint black's token at."""
+
+    id: str
+    white_token: str
+    black_token: str
+    white_back_rank: Optional[dict[str, str]] = None
+    white_evolved_squares: Optional[list[str]] = None
+    black_back_rank: Optional[dict[str, str]] = None
+    black_evolved_squares: Optional[list[str]] = None
+    game_id: Optional[str] = None
+
+
 _GAMES: dict[str, CustomGame] = {}
 _ROOMS: dict[str, PendingRoom] = {}
+_SIMUL_ROOMS: dict[str, SimulRoom] = {}
 
 
 def create_game(
@@ -129,3 +151,13 @@ def create_room(white_back_rank: dict[str, str], white_evolved_squares: list[str
 
 def get_room(room_id: str) -> Optional[PendingRoom]:
     return _ROOMS.get(room_id)
+
+
+def create_simul_room(white_token: str, black_token: str) -> SimulRoom:
+    room = SimulRoom(id=uuid.uuid4().hex, white_token=white_token, black_token=black_token)
+    _SIMUL_ROOMS[room.id] = room
+    return room
+
+
+def get_simul_room(room_id: str) -> Optional[SimulRoom]:
+    return _SIMUL_ROOMS.get(room_id)

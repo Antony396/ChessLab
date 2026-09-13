@@ -22,18 +22,21 @@ import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 
 from app import db
-from app.api.custom_game_routes import _validate_deck_points
+from app.api.custom_game_routes import _build_game_from_two_decks, _to_state, _validate_deck_points
 from app.custom_chess import store as game_store
+from app.custom_chess.ws_manager import manager
 from app.social import store
 from app.social.auth import get_current_user_id
 from app.social.models import (
     AuthResponse,
     ChallengeRequest,
+    ChallengeResponse,
     FriendPublic,
     FriendRequestPublic,
     LoginRequest,
     RegisterRequest,
     SendFriendRequestPayload,
+    SimulSubmitRequest,
     UserPublic,
     UserSearchResult,
 )
@@ -181,16 +184,26 @@ def list_friends(user_id: str = Depends(get_current_user_id)):
 
 
 # --- Code-free PvP challenges --------------------------------------------
+#
+# Unlike the shareable-link online-room flow (custom_chess/store.py's
+# PendingRoom, always seeded with white's already-drafted deck), a
+# friend-to-friend challenge starts empty on both sides and drafting
+# happens simultaneously: the instant the challenge is sent, the
+# challenger goes to their own deck builder, and the target's presence
+# connection gets pushed straight into theirs too (see the "challenge" WS
+# message below) - no separate accept step gating drafting, since this is
+# already a friend-to-friend action. Whoever finishes first just waits
+# (see /simul-room/{id}/ws) for the other.
 
 
-@router.post("/challenge")
+@router.post("/challenge", response_model=ChallengeResponse)
 async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get_current_user_id)):
     if not db.are_friends(user_id, payload.to_user_id):
         raise HTTPException(403, "You can only challenge a friend")
 
-    _validate_deck_points(payload.white_back_rank, payload.white_evolved_squares)
     white_token = uuid.uuid4().hex
-    room = game_store.create_room(payload.white_back_rank, payload.white_evolved_squares, white_token)
+    black_token = uuid.uuid4().hex
+    room = game_store.create_simul_room(white_token, black_token)
 
     challenger = db.get_user_by_id(user_id)
     delivered = False
@@ -200,6 +213,7 @@ async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get
                 {
                     "type": "challenge",
                     "room_id": room.id,
+                    "black_token": black_token,
                     "from": {"id": user_id, "username": challenger["username"]},
                 }
             )
@@ -207,7 +221,72 @@ async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get
         except Exception:
             pass
 
-    return {"room_id": room.id, "white_token": white_token, "delivered": delivered}
+    return ChallengeResponse(room_id=room.id, white_token=white_token, delivered=delivered)
+
+
+@router.post("/simul-room/{room_id}/submit")
+async def submit_simul_deck(room_id: str, payload: SimulSubmitRequest):
+    room = game_store.get_simul_room(room_id)
+    if room is None:
+        raise HTTPException(404, "Room not found")
+    if room.game_id is not None:
+        raise HTTPException(400, "This game has already started")
+
+    if payload.token == room.white_token:
+        if room.white_back_rank is not None:
+            raise HTTPException(400, "You've already submitted your deck")
+        _validate_deck_points(payload.back_rank, payload.evolved_squares)
+        room.white_back_rank = payload.back_rank
+        room.white_evolved_squares = payload.evolved_squares
+    elif payload.token == room.black_token:
+        if room.black_back_rank is not None:
+            raise HTTPException(400, "You've already submitted your deck")
+        _validate_deck_points(payload.back_rank, payload.evolved_squares)
+        room.black_back_rank = payload.back_rank
+        room.black_evolved_squares = payload.evolved_squares
+    else:
+        raise HTTPException(403, "Invalid token")
+
+    if room.white_back_rank is None or room.black_back_rank is None:
+        return {"waiting": True, "game": None}
+
+    game = _build_game_from_two_decks(
+        room.white_back_rank, room.white_evolved_squares, room.black_back_rank, room.black_evolved_squares
+    )
+    game.white_token = room.white_token
+    game.black_token = room.black_token
+    room.game_id = game.id
+
+    state = _to_state(game)
+    # Whoever's still waiting (connected since right after they submitted -
+    # see the ws endpoint below) gets the finished game pushed to them;
+    # whoever submits second (here) gets it straight back in this response.
+    await manager.broadcast(room_id, {**state.model_dump(), "ready": True})
+    return {"waiting": False, "game": state.model_dump()}
+
+
+@router.websocket("/simul-room/{room_id}/ws")
+async def simul_room_ws(websocket: WebSocket, room_id: str):
+    """Whoever finishes drafting first connects here and just waits - see
+    online_game_routes.py's online_room_ws for the identical idea on the
+    shareable-link flow this mirrors."""
+    room = game_store.get_simul_room(room_id)
+    if room is None:
+        await websocket.close(code=4404)
+        return
+
+    await manager.connect(room_id, websocket)
+    try:
+        if room.game_id is not None:
+            game = game_store.get_game(room.game_id)
+            if game is not None:
+                await websocket.send_json({**_to_state(game).model_dump(), "ready": True})
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.disconnect(room_id, websocket)
 
 
 # --- Live presence: sessions, dorm-visiting, movement relay ----------------

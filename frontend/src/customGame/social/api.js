@@ -81,7 +81,20 @@ export function postChallenge(token, payload) {
   }).then(handle);
 }
 
+export function postSimulSubmit(roomId, payload) {
+  return fetch(`${API_BASE}/simul-room/${encodeURIComponent(roomId)}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(handle);
+}
+
 export function presenceWsUrl(token) {
   const wsRoot = API_ROOT.replace(/^http/, "ws");
   return `${wsRoot}/api/social/presence/ws?token=${encodeURIComponent(token)}`;
+}
+
+export function simulRoomWsUrl(roomId) {
+  const wsRoot = API_ROOT.replace(/^http/, "ws");
+  return `${wsRoot}/api/social/simul-room/${encodeURIComponent(roomId)}/ws`;
 }

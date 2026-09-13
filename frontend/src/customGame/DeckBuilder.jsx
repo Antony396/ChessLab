@@ -10,7 +10,7 @@ import {
 } from "../pieces/flat2dPieces";
 import { postCustomSetup, postOnlineCreate, postOnlineRoomJoin } from "./api";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
-import { postChallenge } from "./social/api";
+import { postSimulSubmit } from "./social/api";
 
 const FILES = "abcdefgh";
 const KING_HOME_INDEX = 4; // e-file, the King's regular starting square
@@ -453,10 +453,15 @@ export default function DeckBuilder({
   joinMode,
   roomId,
   onOnlineDeckSubmitted,
-  challengeTarget,
-  authToken,
+  simulRoom,
+  onSimulWaiting,
+  onSimulGameReady,
 }) {
-  const rank = joinMode ? "8" : "1";
+  // A friend challenge drafts on whichever rank actually matches my color
+  // in that room (White = rank 1, Black = rank 8, same as joinMode's
+  // shareable-link second player always being Black) - unlike everywhere
+  // else in this component, a simul room's "me" isn't always White.
+  const rank = joinMode || simulRoom?.myColor === "black" ? "8" : "1";
   // Kept in sync with the hub avatar and the actual game board (see
   // customGame/skinStore.js) - equip a skin once, see it everywhere.
   const equippedSkin = useEquippedSkin();
@@ -659,17 +664,26 @@ export default function DeckBuilder({
     }
   }
 
-  async function handleChallenge() {
+  async function handleSimulSubmit() {
     setError(null);
     setStarting(true);
     try {
       const payload = {
-        to_user_id: challengeTarget.id,
-        white_back_rank: buildBackRank(),
-        white_evolved_squares: buildEvolvedSquares(),
+        token: simulRoom.myToken,
+        back_rank: buildBackRank(),
+        evolved_squares: buildEvolvedSquares(),
       };
-      const result = await postChallenge(authToken, payload);
-      onOnlineGameCreated(result);
+      const result = await postSimulSubmit(simulRoom.roomId, payload);
+      if (result.waiting) {
+        onSimulWaiting();
+      } else {
+        onSimulGameReady({
+          initialGame: result.game,
+          myColor: simulRoom.myColor,
+          myToken: simulRoom.myToken,
+          roomId: simulRoom.roomId,
+        });
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -791,18 +805,14 @@ export default function DeckBuilder({
           <button type="button" className="start-game-btn online" disabled={starting || overBudget || kingCount !== 1} onClick={handleJoin}>
             {starting ? "Joining…" : kingCount !== 1 ? "Place exactly one King" : "Join Game"}
           </button>
-        ) : challengeTarget ? (
+        ) : simulRoom ? (
           <button
             type="button"
             className="start-game-btn online"
             disabled={starting || overBudget || kingCount !== 1}
-            onClick={handleChallenge}
+            onClick={handleSimulSubmit}
           >
-            {starting
-              ? "Sending…"
-              : kingCount !== 1
-                ? "Place exactly one King"
-                : `Send Challenge to ${challengeTarget.username}`}
+            {starting ? "Submitting…" : kingCount !== 1 ? "Place exactly one King" : "Ready"}
           </button>
         ) : (
           <>
@@ -830,8 +840,8 @@ export default function DeckBuilder({
       <p className="deck-hint">
         {joinMode
           ? `Build your deck (up to ${MAX_DECK_POINTS} points), then join the match. `
-          : challengeTarget
-            ? `Build a deck of up to ${MAX_DECK_POINTS} points, then challenge ${challengeTarget.username} directly - no code needed. `
+          : simulRoom
+            ? `Build a deck of up to ${MAX_DECK_POINTS} points - ${simulRoom.opponentUsername} is drafting theirs right now too, the match starts the moment you're both ready. `
             : `Build a deck of up to ${MAX_DECK_POINTS} points, then play a match against the computer. `}
         Drag a card into a deck slot. Click a filled slot to clear it. Click <strong>?</strong> on a card for a
         demo.
