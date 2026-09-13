@@ -67,6 +67,13 @@ class CustomGameState(BaseModel):
     # too, mirroring the backend's _mirror_current_mimic_is_hydra.
     white_last_moved_was_hydra: bool = False
     black_last_moved_was_hydra: bool = False
+    # True when whoever's turn it currently is (see `turn` above) is in
+    # check right now - the same true-check computation _compute_status
+    # uses for checkmate, so this correctly accounts for a hero piece's
+    # extra threat squares too, not just what python-chess's own
+    # board.is_check() can see. Lets the frontend show a check/checkmate
+    # banner without duplicating any of that threat-detection logic itself.
+    in_check: bool = False
     action_log: list[str]
 
 

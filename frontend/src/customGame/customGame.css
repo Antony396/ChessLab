@@ -114,6 +114,57 @@
   margin: 8px auto;
 }
 
+.game-status-banner {
+  max-width: 640px;
+  margin: 0 auto 10px;
+  padding: 10px 16px;
+  border-radius: var(--hc-radius-sm);
+  text-align: center;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  animation: game-status-banner-in 0.2s ease-out;
+}
+
+@keyframes game-status-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.game-status-banner.check {
+  background: rgba(217, 112, 55, 0.16);
+  border: 1px solid rgba(217, 112, 55, 0.5);
+  color: #e08a4d;
+}
+
+.game-status-banner.checkmate.win {
+  background: linear-gradient(160deg, rgba(245, 197, 66, 0.22), rgba(245, 197, 66, 0.08));
+  border: 1px solid var(--hc-gold);
+  color: var(--hc-gold);
+  font-size: 22px;
+}
+
+.game-status-banner.checkmate.lose {
+  background: rgba(217, 60, 60, 0.16);
+  border: 1px solid rgba(217, 60, 60, 0.55);
+  color: #e07070;
+  font-size: 22px;
+}
+
+.game-status-banner.draw {
+  background: var(--hc-surface);
+  border: 1px solid var(--hc-border-strong);
+  color: var(--hc-text-h);
+}
+
 .start-buttons-row {
   display: flex;
   justify-content: center;

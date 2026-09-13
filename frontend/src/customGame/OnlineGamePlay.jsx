@@ -5,6 +5,7 @@ import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { playMoveSound } from "./sound";
+import GameStatusBanner from "./GameStatusBanner";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
 const RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(20,20,20,0.35)" };
@@ -301,6 +302,8 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
           New Game
         </button>
       </div>
+
+      <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor={myColor} />
 
       <div className="board-wrap custom-play-board">
         <Chessboard options={options} />

@@ -1,11 +1,26 @@
 import chess
 
-from app.api.custom_game_routes import _apply_move, _in_check
+from app.api.custom_game_routes import _apply_move, _in_check, _to_state
 from app.custom_chess.store import CustomGame
 
 
 def _make_game(fen: str, **squares) -> CustomGame:
     return CustomGame(id="test", board=chess.Board(fen=fen), vs_ai=False, **squares)
+
+
+# Regression coverage for the frontend's check/checkmate banner: it reads
+# CustomGameState.in_check rather than re-deriving check itself (which would
+# require duplicating every hero-piece threat rule above in JS) - so
+# _to_state must actually wire _in_check's result through, including the
+# same hero-piece blind spot python-chess's own check detection has.
+def test_to_state_exposes_in_check_including_hero_piece_threats():
+    game = _make_game("8/8/8/8/8/5R2/8/K5k1 b - - 0 1", white_dragon_square=chess.F3)
+    assert _to_state(game).in_check is True
+
+
+def test_to_state_in_check_false_when_not_in_check():
+    game = _make_game("8/8/8/8/8/8/8/K6k w - - 0 1")
+    assert _to_state(game).in_check is False
 
 
 # Regression coverage for: "the dragon pieces aren't putting the enemy king

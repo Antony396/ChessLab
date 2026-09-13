@@ -580,6 +580,7 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         black_last_moved_type=_piece_letter_or_none(game.black_last_moved_type),
         white_last_moved_was_hydra=game.white_last_moved_was_hydra,
         black_last_moved_was_hydra=game.black_last_moved_was_hydra,
+        in_check=_in_check(game, game.board.turn),
         action_log=list(game.action_log),
     )
 
