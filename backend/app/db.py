@@ -37,7 +37,23 @@ def _connect() -> psycopg.Connection:
     # another. Without this, a query repeated enough times to cross
     # psycopg's default prepare threshold could start intermittently failing
     # with "prepared statement does not exist" under real traffic.
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None)
+    #
+    # autocommit=True: psycopg3 defaults to autocommit=False, meaning even a
+    # bare read (SELECT * FROM users WHERE id = %s, say) opens a real
+    # transaction that stays open - "idle in transaction" - until something
+    # ELSE on that same thread's connection happens to commit. Almost every
+    # read function in this file never calls .commit() at all (there's
+    # nothing to persist), so on a long-lived thread each read just left its
+    # transaction open indefinitely. Normally harmless, but it holds a lock
+    # that blocks a DDL statement needing exclusive access to that table -
+    # this is exactly what silently hung this backend's own startup for
+    # several minutes once enough read-only requests had accumulated open
+    # transactions across worker threads: init_db()'s ALTER TABLE ... ADD
+    # COLUMN queued behind them and never got a chance to run. Every write
+    # below still calls .commit() explicitly (now a harmless no-op under
+    # autocommit) - none of them needs multi-statement atomicity with
+    # anything else, so there's no downside to this being always-on.
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, autocommit=True)
 
 
 def get_conn() -> psycopg.Connection:
