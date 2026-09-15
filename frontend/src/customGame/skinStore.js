@@ -101,6 +101,26 @@ export const KING_SKINS = {
     whiteTeamSrc: "/pieces/avatars/ember-knight-white.png",
     headSrc: "/pieces/avatars/ember-knight-head.png",
   },
+  // Dark navy plate under bronze/copper trim - dark enough to need its own
+  // whiteTeamSrc recolor, like the others above.
+  bronzeKing: {
+    name: "Bronze King",
+    src: "/pieces/avatars/bronze-king.png",
+    whiteTeamSrc: "/pieces/avatars/bronze-king-white.png",
+    headSrc: "/pieces/avatars/bronze-king-head.png",
+  },
+  silverAscendant: {
+    name: "Silver Ascendant",
+    src: "/pieces/avatars/silver-ascendant.png",
+    whiteTeamSrc: "/pieces/avatars/silver-ascendant-white.png",
+    headSrc: "/pieces/avatars/silver-ascendant-head.png",
+  },
+  goldenAscendant: {
+    name: "Golden Ascendant",
+    src: "/pieces/avatars/golden-ascendant.png",
+    whiteTeamSrc: "/pieces/avatars/golden-ascendant-white.png",
+    headSrc: "/pieces/avatars/golden-ascendant-head.png",
+  },
 };
 const DEFAULT_SKIN = "classic";
 const STORAGE_KEY = "evoChessEquippedSkin";

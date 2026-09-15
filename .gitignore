@@ -23,6 +23,8 @@ frontend/dist/
 /FournewSkins.png
 /Default_and_regalskin.png
 /dark_knight_glowingeyes.png
+/bronze.png
+/top10%_andtop1.png
 .neon
 .env.local
 .env.test
