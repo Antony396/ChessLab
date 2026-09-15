@@ -12,7 +12,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Doesn't override an already-set DATABASE_URL, so a real env var always wins.
 load_dotenv(BASE_DIR.parent / ".env.local")
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# .strip() guards against a stray trailing newline/whitespace in the env
+# var's value (an easy mistake pasting a connection string into a dashboard
+# text field) - psycopg parses it literally, so "require\n" as the sslmode
+# fails validation and the app can't start at all. Learned the hard way:
+# this exact thing took the whole backend down in production.
+_raw_database_url = os.environ.get("DATABASE_URL")
+DATABASE_URL = _raw_database_url.strip() if _raw_database_url else None
 
 # Populated by the v1 setup (winget install Stockfish.Stockfish). Used only if
 # "stockfish" isn't yet on PATH in the current shell session.
