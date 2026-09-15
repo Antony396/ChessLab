@@ -356,16 +356,14 @@ async def simul_room_ws(websocket: WebSocket, room_id: str):
 # --- Live presence: sessions, dorm-visiting, movement relay ----------------
 
 CHAT_MAX_LENGTH = 200
-# A sentinel "dorm" id (never a real account id, which are always hex
-# uuids) representing the shared Commons area - a single room every
-# connected user can walk into together, unlike every other dorm here
-# which belongs to exactly one account. connections_in_dorm/_broadcast_to_
-# dorm below don't need to know this is special at all: viewing_dorm_of is
-# just a string key, so routing "everyone standing in the Commons right
-# now" works identically to routing "everyone standing in Alice's dorm
-# right now" - the only place that DOES need to know is the "visit"
-# handler's friends-only check, which this bypasses.
-COMMONS_DORM_ID = "__commons__"
+# COMMONS_DORM_ID (see store.py for what it actually is) - imported rather
+# than defined here now that bots.py also needs the same value.
+# connections_in_dorm/_broadcast_to_dorm below don't need to know it's
+# special at all: viewing_dorm_of is just a string key, so routing
+# "everyone standing in the Commons right now" works identically to routing
+# "everyone standing in Alice's dorm right now" - the only place that DOES
+# need to know is the "visit" handler's friends-only check, which this
+# bypasses.
 
 
 def _sanitize_chat_text(raw: Optional[str]) -> Optional[str]:
@@ -404,6 +402,8 @@ async def presence_ws(websocket: WebSocket, token: str):
 
     async def _broadcast_to_dorm(owner_id: str, message: dict) -> None:
         for peer in store.connections_in_dorm(owner_id, exclude_connection_id=conn.id):
+            if peer.websocket is None:
+                continue  # a bot (see social/bots.py) - nowhere real to send to
             try:
                 await peer.websocket.send_json(message)
             except Exception:
@@ -434,7 +434,7 @@ async def presence_ws(websocket: WebSocket, token: str):
 
             elif msg_type == "visit":
                 target_id = msg.get("user_id")
-                if target_id != COMMONS_DORM_ID and target_id != user_id and not db.are_friends(user_id, target_id):
+                if target_id != store.COMMONS_DORM_ID and target_id != user_id and not db.are_friends(user_id, target_id):
                     await websocket.send_json({"type": "error", "message": "You can only visit a friend's dorm"})
                     continue
                 old_dorm = conn.viewing_dorm_of

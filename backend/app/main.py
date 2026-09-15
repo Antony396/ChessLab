@@ -12,6 +12,7 @@ from app.api.routes import router
 from app.api.social_routes import router as social_router
 from app.custom_chess.ai import shutdown_engine
 from app.db import init_db
+from app.social import bots
 
 app = FastAPI(title="Chess Game Analyzer")
 
@@ -30,6 +31,13 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Ambient Commons bots (see social/bots.py) - registered once, then
+    # each wanders forever on its own background task for the life of the
+    # process. asyncio.create_task inside start_wandering needs a running
+    # event loop, which only exists once Starlette actually starts running
+    # this app - safe to call from here (a sync startup handler still runs
+    # inside that loop), just not at plain import time.
+    bots.start_wandering()
 
 
 @app.on_event("shutdown")
