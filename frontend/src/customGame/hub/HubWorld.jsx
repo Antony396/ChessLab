@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import AvatarController from "./AvatarController";
 import InteractiveTrigger from "./InteractiveTrigger";
-import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, isInsideRoom } from "./useHubState";
+import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, PUZZLE_PEDESTAL_TILE, LEADERBOARD_TILE, isInsideRoom } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
 import SpeechBubble from "./SpeechBubble";
@@ -75,13 +75,11 @@ const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
 // footprint tile it stands on.
 const HEADROOM = 40;
 
-// Purely decorative - a signboard mounted on the back wall, upper-right of
-// the room (clear of the pedestal on the left and the painted bookshelf
-// below it). Not an InteractiveTrigger: no proximity glow, no click
-// handler - just art layered into the same tile-coordinate space so it
-// scales/positions consistently with everything else in the room.
-const LEADERBOARD_TILE = { x: 9.6, y: -0.35 };
-
+// Purely decorative - a signboard standing on the floor near the back of
+// the room, between the two pedestals (see useHubState.js's
+// LEADERBOARD_TILE). Not an InteractiveTrigger: no proximity glow, no
+// click handler - just art anchored to the bottom of its tile (like the
+// pedestals below) so it reads as real furniture rather than a wall decal.
 function LeaderboardProp() {
   return (
     <div
@@ -104,6 +102,17 @@ function PedestalProp() {
     <div className="pedestal-prop">
       <div className="pedestal-glow" aria-hidden="true" />
       <img src="/pieces/props/pvp-pedestal.png" alt="" className="pedestal-prop-img" draggable={false} />
+    </div>
+  );
+}
+
+// The Puzzle Rush counterpart, mirrored on the right side of the room -
+// same treatment as PedestalProp (real furniture, not an icon-in-a-box).
+function PuzzlePedestalProp() {
+  return (
+    <div className="puzzle-pedestal-prop">
+      <div className="puzzle-pedestal-glow" aria-hidden="true" />
+      <img src="/pieces/props/puzzle-pedestal.png" alt="" className="puzzle-pedestal-prop-img" draggable={false} />
     </div>
   );
 }
@@ -248,21 +257,24 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
     }, CHAT_BUBBLE_DURATION_MS);
   }
 
-  // "E to interact" - the keyboard-native counterpart to clicking the
-  // pedestal directly, active only while standing next to it (and only in
-  // your own dorm - see VisitingBanner above). Skipped while the chat
-  // input (or any other input/textarea) has focus, so typing the letter
-  // "e" in a message never also pops the pedestal overlay open.
+  // "E to interact" - the keyboard-native counterpart to clicking a
+  // pedestal directly, active only while standing next to one (and, for
+  // the PvP pedestal, only in your own dorm - see VisitingBanner above;
+  // the Puzzle Rush pedestal has no such ambiguity, so it works while
+  // visiting too, same as the side-panel Puzzles button). Skipped while
+  // the chat input (or any other input/textarea) has focus, so typing the
+  // letter "e" in a message never also pops an overlay open.
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key.toLowerCase() !== "e") return;
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!isVisiting && hub.isNearPedestal) hub.setActiveOverlay("match-queue");
+      else if (hub.isNearPuzzlePedestal) onOpenPuzzleRush();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hub.isNearPedestal, hub.setActiveOverlay, isVisiting]);
+  }, [hub.isNearPedestal, hub.isNearPuzzlePedestal, hub.setActiveOverlay, isVisiting, onOpenPuzzleRush]);
 
   // Broadcast this avatar's own position/facing/skin to whoever else is in
   // the same dorm right now, whenever any of them change.
@@ -319,6 +331,17 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
               />
             )}
 
+            <InteractiveTrigger
+              tile={PUZZLE_PEDESTAL_TILE}
+              tileSize={TILE_SIZE}
+              isNear={hub.isNearPuzzlePedestal}
+              label="Puzzle Rush"
+              promptLabel="Click or press E"
+              variant="puzzle-pedestal"
+              icon={<PuzzlePedestalProp />}
+              onActivate={onOpenPuzzleRush}
+            />
+
             <LeaderboardProp />
 
             {presence?.occupants.map((occupant) => (
@@ -347,7 +370,7 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}
           {isVisiting
             ? "This is someone else's dorm - just visiting."
-            : "Approach the pedestal to draft your deck and start a game."}
+            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for Puzzle Rush."}
         </p>
       </div>
     </>

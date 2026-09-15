@@ -359,15 +359,17 @@
   z-index: 1;
 }
 
-/* The pedestal is a real piece of furniture, not an icon-in-a-box - its
-   own .hub-trigger-icon box is unset so PedestalProp's own image takes
+/* Both pedestals are real pieces of furniture, not an icon-in-a-box - each
+   one's own .hub-trigger-icon box is unset so its own prop image takes
    over the whole footprint, taller than the tile it stands on (like the
    avatar, anchored at the bottom and overflowing upward). */
-.hub-trigger-pedestal {
+.hub-trigger-pedestal,
+.hub-trigger-puzzle-pedestal {
   overflow: visible;
 }
 
-.hub-trigger-pedestal .hub-trigger-icon {
+.hub-trigger-pedestal .hub-trigger-icon,
+.hub-trigger-puzzle-pedestal .hub-trigger-icon {
   width: auto;
   height: auto;
   background: none;
@@ -375,7 +377,8 @@
   filter: none;
 }
 
-.hub-trigger-pedestal.near .hub-trigger-icon {
+.hub-trigger-pedestal.near .hub-trigger-icon,
+.hub-trigger-puzzle-pedestal.near .hub-trigger-icon {
   transform: none;
 }
 
@@ -414,20 +417,64 @@
   filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
 }
 
-/* Static wall decoration - no interaction, so unlike .hub-trigger it isn't
-   a <button> and needs no glow/prompt machinery, just placement. */
+/* Puzzle Rush's pedestal - same treatment as the PvP one above, its own
+   classes since puzzle-pedestal.png has different proportions. */
+.puzzle-pedestal-prop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 60px;
+}
+
+.puzzle-pedestal-glow {
+  position: absolute;
+  bottom: 6px;
+  width: 48px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 197, 66, 0.35), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.hub-trigger-puzzle-pedestal.near .puzzle-pedestal-glow {
+  opacity: 1;
+}
+
+.puzzle-pedestal-prop-img {
+  position: relative;
+  width: 60px;
+  height: auto;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
+  transition: filter 0.2s ease;
+}
+
+.hub-trigger-puzzle-pedestal.near .puzzle-pedestal-prop-img {
+  filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
+}
+
+/* Floor-standing, not wall-mounted - anchored to the bottom of its tile
+   the same way the pedestals are (see .hub-trigger's flex-end above),
+   just without the InteractiveTrigger button/glow/prompt machinery since
+   there's nothing to activate here yet. */
 .leaderboard-prop {
   position: absolute;
   top: 0;
   left: 0;
-  width: 92px;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   pointer-events: none;
   z-index: 1;
 }
 
 .leaderboard-prop-img {
-  display: block;
-  width: 100%;
+  position: relative;
+  width: 78px;
   height: auto;
   filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.55));
 }

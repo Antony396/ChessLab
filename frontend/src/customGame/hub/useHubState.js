@@ -23,6 +23,16 @@ export const TILE_SIZE = 72;
 // hubWorld.css's .hub-room background-size:cover comment for how that
 // boundary maps into this grid's pixel space.
 export const PEDESTAL_TILE = { x: 2, y: 4 };
+// The Puzzle Rush pedestal - mirrored on the right side of the room,
+// symmetric with PEDESTAL_TILE on the left, and interacted with the same
+// way (see isBlocked below and HubWorld.jsx's InteractiveTrigger for it).
+export const PUZZLE_PEDESTAL_TILE = { x: 12, y: 4 };
+// The leaderboard signboard - free-standing on the floor near the back of
+// the room, between the two pedestals. Purely decorative for now (see
+// HubWorld.jsx's LeaderboardProp), but still a real piece of furniture -
+// it blocks its own tile like the pedestals do, just with no
+// InteractiveTrigger wrapping it since there's nothing to activate yet.
+export const LEADERBOARD_TILE = { x: 7, y: 1 };
 // Bottom-center, lined up with the glowing entrance notch painted into the
 // background art.
 const AVATAR_START = { x: 7, y: 6 };
@@ -55,7 +65,12 @@ function tilesEqual(a, b) {
 }
 
 function isBlocked(tile) {
-  return tilesEqual(tile, PEDESTAL_TILE) || !isInsideRoom(tile);
+  return (
+    tilesEqual(tile, PEDESTAL_TILE) ||
+    tilesEqual(tile, PUZZLE_PEDESTAL_TILE) ||
+    tilesEqual(tile, LEADERBOARD_TILE) ||
+    !isInsideRoom(tile)
+  );
 }
 
 function inBounds(tile) {
@@ -86,6 +101,7 @@ export function useHubState() {
   const [matchQueueStatus, setMatchQueueStatus] = useState("idle");
 
   const isNearPedestal = chebyshevDistance(position, PEDESTAL_TILE) <= 1;
+  const isNearPuzzlePedestal = chebyshevDistance(position, PUZZLE_PEDESTAL_TILE) <= 1;
 
   const hopDuration = 220; // ms - must match hubWorld.css's .avatar.hopping animation
 
@@ -208,6 +224,7 @@ export function useHubState() {
     matchQueueStatus,
     setMatchQueueStatus,
     isNearPedestal,
+    isNearPuzzlePedestal,
     step,
     walkTo,
   };
