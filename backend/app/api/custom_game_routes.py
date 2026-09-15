@@ -75,23 +75,31 @@ def _compute_deck_points(back_rank: dict[str, str], evolved_squares: list[str]) 
 #     could never make
 #   - a Pope threatens it via a one-square king-step that a Bishop could
 #     never make (its only movement mode)
-#   - an Archer threatens it via a one-square king-step relocation that a
-#     Knight could never make (its knight-shaped "shoot" mode - the one mode
-#     that IS visible to python-chess, since it happens to match a Knight's
-#     real attack pattern - can never target the King at all: see
-#     rules.execute_archer_shoot's ban on shooting it)
 #   - a Pawn boosted by a nearby Pope's aura threatens the enemy king via a
 #     two-square diagonal capture jump that a plain Pawn could never make
 #
-# Without accounting for these, a side could simply ignore a Dragon/Pope/
-# Archer/boosted-Pawn's threat against their own king (since python-chess
-# never flags it as check), or even have their king actually captured
-# outright by one of these moves - the checkmate rule that's supposed to
-# prevent that entirely depends on check being detected correctly in the
-# first place. Everything below layers the missing threat squares on top of
-# python-chess's own attack detection, and is used both to reject a mover's
-# own move that leaves them exposed (_apply_move) and to compute true
-# checkmate/stalemate (_compute_status).
+# An Archer is deliberately NOT in this list, even though it's stored as a
+# Knight and so has the exact same blind-spot shape as the others: its
+# relocate is move-only (execute_archer_move rejects ANY occupied target,
+# friend or foe - "shoot to capture" is right there in the error message),
+# and its shoot explicitly refuses the enemy King as a target
+# (execute_archer_shoot's own check). Neither mode can ever actually
+# capture a king, so an Archer poses no real threat to it at all - the
+# code used to add a king-step "threat" around the Archer anyway (probably
+# copied from the Pope case above without noticing the Pope's king-step
+# CAN capture), which had the enemy king unable to stand next to an Archer
+# at all, ever, for no real reason - "king can't come close to archer" was
+# a real, reported bug from exactly this.
+#
+# Without accounting for the pieces above, a side could simply ignore a
+# Dragon/Pope/boosted-Pawn's threat against their own king (since
+# python-chess never flags it as check), or even have their king actually
+# captured outright by one of these moves - the checkmate rule that's
+# supposed to prevent that entirely depends on check being detected
+# correctly in the first place. Everything below layers the missing threat
+# squares on top of python-chess's own attack detection, and is used both
+# to reject a mover's own move that leaves them exposed (_apply_move) and
+# to compute true checkmate/stalemate (_compute_status).
 
 
 def _mirror_current_mimic_type(game: store.CustomGame, mirror_owner_color: chess.Color) -> Optional[chess.PieceType]:
@@ -131,10 +139,9 @@ def _mirror_threat_squares(
     mirror_square: chess.Square,
     mimic_type: chess.PieceType,
     mimic_is_hydra: bool = False,
-    mimic_is_archer: bool = False,
 ) -> set[chess.Square]:
     """Squares a Mirror currently threatens, given it's mimicking
-    mimic_type. King mimicry is pure geometry (mirroring the Pope/Archer
+    mimic_type. King mimicry is pure geometry (mirroring the Pope's
     king-step threat above); every other type reuses python-chess's own
     board.attacks() on a scratch copy with the Mirror's real Bishop
     temporarily swapped for the mimicked type - correctly blocked by
@@ -142,9 +149,12 @@ def _mirror_threat_squares(
     forward (non-attacking) push. mimic_is_hydra additionally layers on a
     Hydra's ring-extra squares (see _extra_threat_squares), invisible to
     board.attacks() the same way they're invisible to board.legal_moves.
-    mimic_is_archer layers on the same king-step threat _extra_threat_squares
-    gives the real Archer - the knight-shape portion (the shoot) is already
-    covered by scratch.attacks() above, same as a plain Knight/Hydra."""
+    No equivalent parameter for mimicking an Archer: a Mirror copying one
+    poses exactly the same non-threat to a king that a real Archer does
+    (see _extra_threat_squares's own docstring for why) - the knight-shape
+    portion (its shoot) is already covered by scratch.attacks() above, same
+    as a plain Knight/Hydra, and its relocate mode can't capture anything
+    at all, so there's nothing further to add here."""
     if mimic_type == chess.KING:
         return set(rules.offset_squares(mirror_square, rules.KING_STEP_OFFSETS))
     piece = board.piece_at(mirror_square)
@@ -155,8 +165,6 @@ def _mirror_threat_squares(
     squares = set(scratch.attacks(mirror_square))
     if mimic_is_hydra and mimic_type == chess.KNIGHT:
         squares.update(rules.offset_squares(mirror_square, rules.HYDRA_RING_EXTRA_OFFSETS))
-    if mimic_is_archer and mimic_type == chess.KNIGHT:
-        squares.update(rules.offset_squares(mirror_square, rules.KING_STEP_OFFSETS))
     return squares
 
 
@@ -194,9 +202,9 @@ def _extra_threat_squares(game: store.CustomGame, attacker_color: chess.Color) -
         squares.update(rules.offset_squares(pope_square, rules.KING_STEP_OFFSETS))
     squares.update(_boosted_pawn_threat_squares(game, pope_square, attacker_color))
 
-    archer_square = game.white_archer_square if attacker_color == chess.WHITE else game.black_archer_square
-    if archer_square is not None:
-        squares.update(rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS))
+    # No entry for the Archer here on purpose - see this function's own
+    # section docstring above for why it poses no direct threat to a king
+    # at all, unlike every other hero piece in this list.
 
     # A Hydra's knight-shaped third of its ring is already covered by
     # python-chess's own native attack detection (it's stored as a real
@@ -217,9 +225,8 @@ def _extra_threat_squares(game: store.CustomGame, attacker_color: chess.Color) -
         mimic_type = _mirror_current_mimic_type(game, attacker_color)
         if mimic_type is not None:
             mimic_is_hydra = _mirror_current_mimic_is_hydra(game, attacker_color)
-            mimic_is_archer = _mirror_current_mimic_is_archer(game, attacker_color)
             for mirror_square in mirror_squares:
-                squares.update(_mirror_threat_squares(game.board, mirror_square, mimic_type, mimic_is_hydra, mimic_is_archer))
+                squares.update(_mirror_threat_squares(game.board, mirror_square, mimic_type, mimic_is_hydra))
 
     return squares
 
