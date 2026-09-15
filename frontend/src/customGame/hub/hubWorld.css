@@ -360,10 +360,9 @@
 }
 
 /* The pedestal is a real piece of furniture, not an icon-in-a-box - its
-   own .hub-trigger-icon box is unset so PedestalProp's own layered shapes
-   (base slabs, column, glowing finial) take over the whole footprint,
-   taller than the tile it stands on (like the avatar, anchored at the
-   bottom and overflowing upward). */
+   own .hub-trigger-icon box is unset so PedestalProp's own image takes
+   over the whole footprint, taller than the tile it stands on (like the
+   avatar, anchored at the bottom and overflowing upward). */
 .hub-trigger-pedestal {
   overflow: visible;
 }
@@ -385,14 +384,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 56px;
+  width: 68px;
 }
 
 .pedestal-glow {
   position: absolute;
-  bottom: 14px;
-  width: 44px;
-  height: 44px;
+  bottom: 6px;
+  width: 54px;
+  height: 20px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(245, 197, 66, 0.35), transparent 70%);
   opacity: 0;
@@ -403,58 +402,34 @@
   opacity: 1;
 }
 
-.pedestal-finial {
+.pedestal-prop-img {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  margin-bottom: -4px;
-  border-radius: 50%;
-  color: var(--hc-gold);
-  background: radial-gradient(circle, rgba(245, 197, 66, 0.3), transparent 75%);
-  filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.6));
+  width: 68px;
+  height: auto;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
+  transition: filter 0.2s ease;
 }
 
-.hub-trigger-pedestal.near .pedestal-finial {
-  animation: pedestal-finial-glow 1.6s ease-in-out infinite;
+.hub-trigger-pedestal.near .pedestal-prop-img {
+  filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
 }
 
-@keyframes pedestal-finial-glow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.6));
-  }
-  50% {
-    filter: drop-shadow(0 0 14px rgba(245, 197, 66, 0.95));
-  }
+/* Static wall decoration - no interaction, so unlike .hub-trigger it isn't
+   a <button> and needs no glow/prompt machinery, just placement. */
+.leaderboard-prop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 92px;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.pedestal-column {
-  width: 14px;
-  height: 30px;
-  background: linear-gradient(90deg, #4a5568 0%, #6b7690 45%, #4a5568 100%);
-  border: 1px solid #2d3748;
-  border-bottom: none;
-}
-
-.pedestal-base-slab {
-  border: 1px solid #2d3748;
-  background: linear-gradient(180deg, #6b7690 0%, #4a5568 60%, #384152 100%);
-}
-
-.pedestal-base-slab-1 {
-  width: 36px;
-  height: 9px;
-  border-radius: 2px;
-}
-
-.pedestal-base-slab-2 {
-  width: 50px;
-  height: 10px;
-  border-radius: 2px;
-  margin-top: -1px;
+.leaderboard-prop-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.55));
 }
 
 .hub-chat-input {

@@ -75,34 +75,35 @@ const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
 // footprint tile it stands on.
 const HEADROOM = 40;
 
-// Two crossed swords - the pedestal's finial ornament, standing in for the
-// PvP duel the pedestal actually queues.
-function DuelingSwordsIcon() {
+// Purely decorative - a signboard mounted on the back wall, upper-right of
+// the room (clear of the pedestal on the left and the painted bookshelf
+// below it). Not an InteractiveTrigger: no proximity glow, no click
+// handler - just art layered into the same tile-coordinate space so it
+// scales/positions consistently with everything else in the room.
+const LEADERBOARD_TILE = { x: 9.6, y: -0.35 };
+
+function LeaderboardProp() {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="5" y1="19" x2="19" y2="5" />
-      <line x1="19" y1="19" x2="5" y2="5" />
-      <path d="M12.5 11.5l2.5 2.5M11.5 12.5l-2.5-2.5" />
-      <circle cx="5" cy="19" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="19" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
+    <div
+      className="leaderboard-prop"
+      style={{ transform: `translate(${LEADERBOARD_TILE.x * TILE_SIZE}px, ${LEADERBOARD_TILE.y * TILE_SIZE}px)` }}
+      aria-hidden="true"
+    >
+      <img src="/pieces/props/leaderboard.png" alt="" className="leaderboard-prop-img" draggable={false} />
+    </div>
   );
 }
 
-// A proper standing pedestal/statue (Wizard101-courtyard-inspired) built
-// from a few stacked CSS shapes rather than a single small icon, so it
-// actually reads as a piece of furniture in the room, not a button. There
-// is exactly one of these in the room, set against the far-left wall.
+// A proper standing pedestal - a chess table with a drafted-army board set
+// on top, matching the room's navy-and-gold theme - rather than a small
+// icon, so it actually reads as a piece of furniture in the room, not a
+// button. There is exactly one of these in the room, set against the
+// far-left wall.
 function PedestalProp() {
   return (
     <div className="pedestal-prop">
       <div className="pedestal-glow" aria-hidden="true" />
-      <div className="pedestal-finial">
-        <DuelingSwordsIcon />
-      </div>
-      <div className="pedestal-column" />
-      <div className="pedestal-base-slab pedestal-base-slab-1" />
-      <div className="pedestal-base-slab pedestal-base-slab-2" />
+      <img src="/pieces/props/pvp-pedestal.png" alt="" className="pedestal-prop-img" draggable={false} />
     </div>
   );
 }
@@ -317,6 +318,8 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
                 onActivate={() => hub.setActiveOverlay("match-queue")}
               />
             )}
+
+            <LeaderboardProp />
 
             {presence?.occupants.map((occupant) => (
               <RemoteAvatar
