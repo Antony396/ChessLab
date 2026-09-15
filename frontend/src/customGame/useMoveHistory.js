@@ -26,20 +26,41 @@ export function useMoveHistory(gameState) {
   const liveIndex = fenHistory.length - 1;
   const currentIndex = historyIndex === null ? liveIndex : Math.min(historyIndex, liveIndex);
   const isViewingHistory = historyIndex !== null && currentIndex < liveIndex;
-  const viewingFen = fenHistory[currentIndex] ?? gameState.fen;
-  // The move that produced the position currently being viewed (whether
-  // that's live or a reviewed past position) - action_log[i] is what
-  // produced fen_history[i+1], so the move landing on fen_history[currentIndex]
-  // is action_log[currentIndex - 1]. null at the very start position, since
-  // nothing produced it.
+  // While live (not reviewing a past position), read gameState directly
+  // rather than through fen_history - that array only grows once the
+  // SERVER confirms a move, one full round trip after the optimistic
+  // update (see CustomGamePlay.jsx/OnlineGamePlay.jsx's handlePieceDrop)
+  // already updated gameState.fen and the hero-tracking-squares fields
+  // together. Deriving the live position from fen_history instead left the
+  // board frozen at the pre-move position for the length of that round
+  // trip - invisible on localhost's near-zero latency, very visible over a
+  // real network - and worse, left it mismatched against the
+  // ALREADY-updated tracking squares in the meantime: a Mirror/Dragon/etc
+  // sitting at its old (pre-move) square with its new square already
+  // claimed by the tracking-squares update reads as "not a hero square
+  // anymore" to the art lookup, so it flashed as its plain base piece
+  // until the board caught up.
+  const viewingFen = isViewingHistory ? (fenHistory[currentIndex] ?? gameState.fen) : gameState.fen;
   const actionLog = gameState.action_log || [];
-  const lastMoveSquares = currentIndex > 0 ? parseMoveSquares(actionLog[currentIndex - 1]) : null;
+  // The move that produced the position currently being viewed. While
+  // live, that's simply the most recent action_log entry - not
+  // action_log[currentIndex - 1], which has the same staleness problem as
+  // fen_history above (action_log is also only ever appended to by a
+  // confirmed server response).
+  const lastMoveSquares = isViewingHistory
+    ? currentIndex > 0
+      ? parseMoveSquares(actionLog[currentIndex - 1])
+      : null
+    : parseMoveSquares(actionLog[actionLog.length - 1]);
   // Which squares held which evolved/hero piece at the position currently
   // being viewed - see backend's EvolutionSnapshot. Lets a reviewed past
   // position render with the SAME hero-piece art the live position uses,
-  // instead of falling back to plain base-type art.
+  // instead of falling back to plain base-type art. Only meaningful while
+  // actually reviewing - the live position already renders hero art
+  // straight from gameState's own (instantly-updated) tracking-squares
+  // fields, not through this snapshot history at all.
   const evolutionHistory = gameState.evolution_history || [];
-  const viewingEvolution = evolutionHistory[currentIndex] || null;
+  const viewingEvolution = isViewingHistory ? evolutionHistory[currentIndex] || null : null;
 
   function goBack() {
     setHistoryIndex((prev) => {
