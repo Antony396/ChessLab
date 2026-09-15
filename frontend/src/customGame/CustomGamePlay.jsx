@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { postAiMove, postCustomMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
-import { playMoveSound } from "./sound";
+import { playMoveSound, warmUpAudio } from "./sound";
 import GameStatusBanner from "./GameStatusBanner";
 import { useMoveHistory } from "./useMoveHistory";
 import { useCapturedRows } from "./CapturedTray";
@@ -45,9 +45,17 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const history = useMoveHistory(gameState);
   const capturedRows = useCapturedRows(gameState, "white"); // the human is always White here (vs-AI)
 
+  // Pays the AudioContext's one-time ~250-300ms construction cost here, at
+  // mount, instead of on the player's first drop - see warmUpAudio's own
+  // comment.
+  useEffect(() => {
+    warmUpAudio();
+  }, []);
+
   const isOver = gameState.status !== "in_progress";
-  const whiteArcherSquares = gameState.white_archer_squares || [];
-  const whiteWizardSquares = gameState.white_wizard_squares || [];
+  const whiteDragonSquares = gameState.white_dragon_squares || [];
+  const whitePopeSquare = gameState.white_pope_square || null;
+  const whiteArcherSquare = gameState.white_archer_square || null;
   const whiteHydraSquares = gameState.white_hydra_squares || [];
   const whiteCyclopsSquares = gameState.white_cyclops_squares || [];
   const whiteMirrorSquares = gameState.white_mirror_squares || [];
@@ -61,9 +69,9 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   // those are only ever about the human's own move.
   function showLegalDestinationsFor(square, colorPrefix) {
     const isWhite = colorPrefix === "w";
-    const dragonSquare = isWhite ? gameState.white_dragon_square : gameState.black_dragon_square;
-    const wizardSquares = (isWhite ? gameState.white_wizard_squares : gameState.black_wizard_squares) || [];
-    const archerSquares = (isWhite ? whiteArcherSquares : gameState.black_archer_squares) || [];
+    const dragonSquares = (isWhite ? whiteDragonSquares : gameState.black_dragon_squares) || [];
+    const popeSquare = isWhite ? whitePopeSquare : gameState.black_pope_square;
+    const archerSquare = isWhite ? whiteArcherSquare : gameState.black_archer_square;
     const hydraSquares = (isWhite ? whiteHydraSquares : gameState.black_hydra_squares) || [];
     const cyclopsSquares = (isWhite ? whiteCyclopsSquares : gameState.black_cyclops_squares) || [];
     const mirrorSquares = (isWhite ? whiteMirrorSquares : gameState.black_mirror_squares) || [];
@@ -73,14 +81,15 @@ export default function CustomGamePlay({ initialGame, onExit }) {
       computeLegalDestinations({
         fen: gameState.fen,
         square,
-        isDragonSquare: square === dragonSquare,
-        isWizardSquare: wizardSquares.includes(square),
-        isArcherSquare: archerSquares.includes(square),
+        isDragonSquare: dragonSquares.includes(square),
+        isPopeSquare: square === popeSquare,
+        isArcherSquare: square === archerSquare,
         isHydraSquare: hydraSquares.includes(square),
         isCyclopsSquare: cyclopsSquares.includes(square),
         isMirrorSquare: mirrorSquares.includes(square),
         mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
         mirrorMimicIsHydra: mimicIsHydra,
+        ownPopeSquare: popeSquare,
       })
     );
   }
@@ -118,7 +127,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     // when the target is one of its knight's-move capture squares, and a
     // relocate otherwise (tryOptimisticFen/the server independently reject
     // anything that's neither).
-    const shoot = whiteArcherSquares.includes(sourceSquare) && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
+    const shoot = sourceSquare === whiteArcherSquare && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
 
     // Show the player's own move immediately rather than waiting on the
     // round trip - see tryOptimisticFen's own comment for exactly which
@@ -134,14 +143,15 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     const previousGameState = gameState;
     let appliedOptimistic = false;
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
-      isDragonSquare: sourceSquare === gameState.white_dragon_square,
-      isWizardSquare: whiteWizardSquares.includes(sourceSquare),
-      isArcherSquare: whiteArcherSquares.includes(sourceSquare),
+      isDragonSquare: whiteDragonSquares.includes(sourceSquare),
+      isPopeSquare: sourceSquare === whitePopeSquare,
+      isArcherSquare: sourceSquare === whiteArcherSquare,
       isHydraSquare: whiteHydraSquares.includes(sourceSquare),
       isCyclopsSquare: whiteCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: whiteMirrorSquares.includes(sourceSquare),
       mirrorMimicType,
       mirrorMimicIsHydra,
+      ownPopeSquare: whitePopeSquare,
       shoot,
     });
     if (optimisticFen) {
@@ -191,12 +201,12 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const pieces = useMemo(
     () =>
       buildPiecesWithEvolutions({
-        whiteDragonSquare: gameState.white_dragon_square,
-        blackDragonSquare: gameState.black_dragon_square,
-        whiteWizardSquares: gameState.white_wizard_squares,
-        blackWizardSquares: gameState.black_wizard_squares,
-        whiteArcherSquares: gameState.white_archer_squares,
-        blackArcherSquares: gameState.black_archer_squares,
+        whiteDragonSquares: gameState.white_dragon_squares,
+        blackDragonSquares: gameState.black_dragon_squares,
+        whitePopeSquare: gameState.white_pope_square,
+        blackPopeSquare: gameState.black_pope_square,
+        whiteArcherSquare: gameState.white_archer_square,
+        blackArcherSquare: gameState.black_archer_square,
         whiteHydraSquares: gameState.white_hydra_squares,
         blackHydraSquares: gameState.black_hydra_squares,
         whiteCyclopsSquares: gameState.white_cyclops_squares,
@@ -206,12 +216,12 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         whiteKingSkinSrc,
       }),
     [
-      gameState.white_dragon_square,
-      gameState.black_dragon_square,
-      gameState.white_wizard_squares,
-      gameState.black_wizard_squares,
-      gameState.white_archer_squares,
-      gameState.black_archer_squares,
+      gameState.white_dragon_squares,
+      gameState.black_dragon_squares,
+      gameState.white_pope_square,
+      gameState.black_pope_square,
+      gameState.white_archer_square,
+      gameState.black_archer_square,
       gameState.white_hydra_squares,
       gameState.black_hydra_squares,
       gameState.white_cyclops_squares,
@@ -231,12 +241,12 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const historyPieces = useMemo(() => {
     const snap = history.viewingEvolution || {};
     return buildPiecesWithEvolutions({
-      whiteDragonSquare: snap.white_dragon_square,
-      blackDragonSquare: snap.black_dragon_square,
-      whiteWizardSquares: snap.white_wizard_squares,
-      blackWizardSquares: snap.black_wizard_squares,
-      whiteArcherSquares: snap.white_archer_squares,
-      blackArcherSquares: snap.black_archer_squares,
+      whiteDragonSquares: snap.white_dragon_squares,
+      blackDragonSquares: snap.black_dragon_squares,
+      whitePopeSquare: snap.white_pope_square,
+      blackPopeSquare: snap.black_pope_square,
+      whiteArcherSquare: snap.white_archer_square,
+      blackArcherSquare: snap.black_archer_square,
       whiteHydraSquares: snap.white_hydra_squares,
       blackHydraSquares: snap.black_hydra_squares,
       whiteCyclopsSquares: snap.white_cyclops_squares,
@@ -327,16 +337,16 @@ export default function CustomGamePlay({ initialGame, onExit }) {
 
       <div className="custom-play-status">
         <div>
-          <strong>Your Dragon:</strong>{" "}
-          {gameState.white_dragon_square ? `at ${gameState.white_dragon_square}` : "none evolved / destroyed"}
+          <strong>Your Dragons:</strong>{" "}
+          {whiteDragonSquares.length > 0 ? whiteDragonSquares.join(", ") : "none in play"}
         </div>
         <div>
-          <strong>Your Wizards:</strong>{" "}
-          {whiteWizardSquares.length > 0 ? whiteWizardSquares.join(", ") : "none evolved / destroyed"}
+          <strong>Your Pope:</strong>{" "}
+          {whitePopeSquare ? `at ${whitePopeSquare}` : "none evolved / destroyed"}
         </div>
         <div>
-          <strong>Your Archers:</strong>{" "}
-          {whiteArcherSquares.length > 0 ? whiteArcherSquares.join(", ") : "none in play"}
+          <strong>Your Archer:</strong>{" "}
+          {whiteArcherSquare ? `at ${whiteArcherSquare}` : "none evolved / destroyed"}
         </div>
         <div>
           <strong>Your Hydras:</strong> {whiteHydraSquares.length > 0 ? whiteHydraSquares.join(", ") : "none in play"}

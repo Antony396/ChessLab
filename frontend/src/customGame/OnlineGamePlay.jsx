@@ -4,7 +4,7 @@ import { onlineGameWsUrl, postOnlineMove } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
-import { playMoveSound } from "./sound";
+import { playMoveSound, warmUpAudio } from "./sound";
 import GameStatusBanner from "./GameStatusBanner";
 import { useMoveHistory } from "./useMoveHistory";
 import { useCapturedRows } from "./CapturedTray";
@@ -60,9 +60,9 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const myKingSkinSrc = myColor === "white" ? KING_SKINS[equippedSkin].whiteTeamSrc : KING_SKINS[equippedSkin].src;
   const isOver = gameState.status !== "in_progress";
   const isMyTurn = gameState.turn === myColor;
-  const myArcherSquares = (myColor === "white" ? gameState.white_archer_squares : gameState.black_archer_squares) || [];
-  const myWizardSquares = (myColor === "white" ? gameState.white_wizard_squares : gameState.black_wizard_squares) || [];
-  const myDragonSquare = myColor === "white" ? gameState.white_dragon_square : gameState.black_dragon_square;
+  const myArcherSquare = myColor === "white" ? gameState.white_archer_square : gameState.black_archer_square;
+  const myPopeSquare = myColor === "white" ? gameState.white_pope_square : gameState.black_pope_square;
+  const myDragonSquares = (myColor === "white" ? gameState.white_dragon_squares : gameState.black_dragon_squares) || [];
   const myHydraSquares = (myColor === "white" ? gameState.white_hydra_squares : gameState.black_hydra_squares) || [];
   const myCyclopsSquares = (myColor === "white" ? gameState.white_cyclops_squares : gameState.black_cyclops_squares) || [];
   const myMirrorSquares = (myColor === "white" ? gameState.white_mirror_squares : gameState.black_mirror_squares) || [];
@@ -86,6 +86,15 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   // reconnect landing on an already-current state - falls through to the
   // length check below instead.
   const pendingOwnMoveRef = useRef(false);
+
+  // Pays the AudioContext's one-time ~250-300ms construction cost here, at
+  // mount, instead of on a player's first drop - see warmUpAudio's own
+  // comment (sound.js). Without this, that cost lands synchronously right
+  // after the very first optimistic move update, blocking React from
+  // actually rendering it - the "moving a piece isn't instant" bug.
+  useEffect(() => {
+    warmUpAudio();
+  }, []);
 
   useEffect(() => {
     let socket;
@@ -130,9 +139,9 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   // MY own move and so stay hardcoded to "my" fields.
   function showLegalDestinationsFor(square, colorPrefix) {
     const isWhite = colorPrefix === "w";
-    const dragonSquare = isWhite ? gameState.white_dragon_square : gameState.black_dragon_square;
-    const wizardSquares = (isWhite ? gameState.white_wizard_squares : gameState.black_wizard_squares) || [];
-    const archerSquares = (isWhite ? gameState.white_archer_squares : gameState.black_archer_squares) || [];
+    const dragonSquares = (isWhite ? gameState.white_dragon_squares : gameState.black_dragon_squares) || [];
+    const popeSquare = isWhite ? gameState.white_pope_square : gameState.black_pope_square;
+    const archerSquare = isWhite ? gameState.white_archer_square : gameState.black_archer_square;
     const hydraSquares = (isWhite ? gameState.white_hydra_squares : gameState.black_hydra_squares) || [];
     const cyclopsSquares = (isWhite ? gameState.white_cyclops_squares : gameState.black_cyclops_squares) || [];
     const mirrorSquares = (isWhite ? gameState.white_mirror_squares : gameState.black_mirror_squares) || [];
@@ -142,14 +151,15 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       computeLegalDestinations({
         fen: gameState.fen,
         square,
-        isDragonSquare: square === dragonSquare,
-        isWizardSquare: wizardSquares.includes(square),
-        isArcherSquare: archerSquares.includes(square),
+        isDragonSquare: dragonSquares.includes(square),
+        isPopeSquare: square === popeSquare,
+        isArcherSquare: square === archerSquare,
         isHydraSquare: hydraSquares.includes(square),
         isCyclopsSquare: cyclopsSquares.includes(square),
         isMirrorSquare: mirrorSquares.includes(square),
         mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
         mirrorMimicIsHydra: mimicIsHydra,
+        ownPopeSquare: popeSquare,
       })
     );
   }
@@ -195,7 +205,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     // when the target is one of its knight's-move capture squares, and a
     // relocate otherwise (tryOptimisticFen/the server independently reject
     // anything that's neither).
-    const shoot = myArcherSquares.includes(sourceSquare) && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
+    const shoot = sourceSquare === myArcherSquare && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
 
     // Show my own move immediately rather than waiting on the round trip -
     // see tryOptimisticFen's own comment for exactly which moves this
@@ -212,14 +222,15 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     const previousGameState = gameState;
     let appliedOptimistic = false;
     const optimisticFen = tryOptimisticFen(gameState.fen, sourceSquare, targetSquare, {
-      isDragonSquare: sourceSquare === myDragonSquare,
-      isWizardSquare: myWizardSquares.includes(sourceSquare),
-      isArcherSquare: myArcherSquares.includes(sourceSquare),
+      isDragonSquare: myDragonSquares.includes(sourceSquare),
+      isPopeSquare: sourceSquare === myPopeSquare,
+      isArcherSquare: sourceSquare === myArcherSquare,
       isHydraSquare: myHydraSquares.includes(sourceSquare),
       isCyclopsSquare: myCyclopsSquares.includes(sourceSquare),
       isMirrorSquare: myMirrorSquares.includes(sourceSquare),
       mirrorMimicType,
       mirrorMimicIsHydra,
+      ownPopeSquare: myPopeSquare,
       shoot,
     });
     if (optimisticFen) {
@@ -289,12 +300,12 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const pieces = useMemo(
     () =>
       buildPiecesWithEvolutions({
-        whiteDragonSquare: gameState.white_dragon_square,
-        blackDragonSquare: gameState.black_dragon_square,
-        whiteWizardSquares: gameState.white_wizard_squares,
-        blackWizardSquares: gameState.black_wizard_squares,
-        whiteArcherSquares: gameState.white_archer_squares,
-        blackArcherSquares: gameState.black_archer_squares,
+        whiteDragonSquares: gameState.white_dragon_squares,
+        blackDragonSquares: gameState.black_dragon_squares,
+        whitePopeSquare: gameState.white_pope_square,
+        blackPopeSquare: gameState.black_pope_square,
+        whiteArcherSquare: gameState.white_archer_square,
+        blackArcherSquare: gameState.black_archer_square,
         whiteHydraSquares: gameState.white_hydra_squares,
         blackHydraSquares: gameState.black_hydra_squares,
         whiteCyclopsSquares: gameState.white_cyclops_squares,
@@ -305,12 +316,12 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         blackKingSkinSrc: myColor === "black" ? myKingSkinSrc : undefined,
       }),
     [
-      gameState.white_dragon_square,
-      gameState.black_dragon_square,
-      gameState.white_wizard_squares,
-      gameState.black_wizard_squares,
-      gameState.white_archer_squares,
-      gameState.black_archer_squares,
+      gameState.white_dragon_squares,
+      gameState.black_dragon_squares,
+      gameState.white_pope_square,
+      gameState.black_pope_square,
+      gameState.white_archer_square,
+      gameState.black_archer_square,
       gameState.white_hydra_squares,
       gameState.black_hydra_squares,
       gameState.white_cyclops_squares,
@@ -331,12 +342,12 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const historyPieces = useMemo(() => {
     const snap = history.viewingEvolution || {};
     return buildPiecesWithEvolutions({
-      whiteDragonSquare: snap.white_dragon_square,
-      blackDragonSquare: snap.black_dragon_square,
-      whiteWizardSquares: snap.white_wizard_squares,
-      blackWizardSquares: snap.black_wizard_squares,
-      whiteArcherSquares: snap.white_archer_squares,
-      blackArcherSquares: snap.black_archer_squares,
+      whiteDragonSquares: snap.white_dragon_squares,
+      blackDragonSquares: snap.black_dragon_squares,
+      whitePopeSquare: snap.white_pope_square,
+      blackPopeSquare: snap.black_pope_square,
+      whiteArcherSquare: snap.white_archer_square,
+      blackArcherSquare: snap.black_archer_square,
       whiteHydraSquares: snap.white_hydra_squares,
       blackHydraSquares: snap.black_hydra_squares,
       whiteCyclopsSquares: snap.white_cyclops_squares,
@@ -448,13 +459,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
 
       <div className="custom-play-status">
         <div>
-          <strong>Your Dragon:</strong> {myDragonSquare ? `at ${myDragonSquare}` : "none evolved / destroyed"}
+          <strong>Your Dragons:</strong> {myDragonSquares.length > 0 ? myDragonSquares.join(", ") : "none in play"}
         </div>
         <div>
-          <strong>Your Wizards:</strong> {myWizardSquares.length > 0 ? myWizardSquares.join(", ") : "none evolved / destroyed"}
+          <strong>Your Pope:</strong> {myPopeSquare ? `at ${myPopeSquare}` : "none evolved / destroyed"}
         </div>
         <div>
-          <strong>Your Archers:</strong> {myArcherSquares.length > 0 ? myArcherSquares.join(", ") : "none in play"}
+          <strong>Your Archer:</strong> {myArcherSquare ? `at ${myArcherSquare}` : "none evolved / destroyed"}
         </div>
         <div>
           <strong>Your Hydras:</strong> {myHydraSquares.length > 0 ? myHydraSquares.join(", ") : "none in play"}

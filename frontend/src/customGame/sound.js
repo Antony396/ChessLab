@@ -13,6 +13,19 @@ function getContext() {
   return audioCtx;
 }
 
+// `new AudioContext()` is measurably slow the first time a page creates one
+// (200-300ms+ to negotiate with the OS audio backend, even though every
+// call after that is instant) - calling this once, early, while the game
+// screen is mounting but before the player has had a chance to actually
+// make a move, pays that cost somewhere it's invisible instead of having it
+// silently eat into the very first move's optimistic-update latency (the
+// "moving a piece isn't instant" bug this fixes: the piece's own state
+// update was already scheduled, but sat blocked behind a synchronous
+// playMoveSound() call cold-constructing this exact context).
+export function warmUpAudio() {
+  getContext();
+}
+
 // A short percussive "click"/"knock" - a burst of bandpass-filtered noise
 // (the actual percussive texture) layered with a quick pitched triangle
 // tone (a bit of "body" so it doesn't sound like pure static). Never lets
