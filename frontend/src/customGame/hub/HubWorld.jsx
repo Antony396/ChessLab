@@ -1,7 +1,16 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import AvatarController from "./AvatarController";
 import InteractiveTrigger from "./InteractiveTrigger";
-import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, PUZZLE_PEDESTAL_TILE, LEADERBOARD_TILE, isInsideRoom } from "./useHubState";
+import {
+  HUB_COLS,
+  HUB_ROWS,
+  TILE_SIZE,
+  PEDESTAL_TILE,
+  PUZZLE_PEDESTAL_TILE,
+  LEADERBOARD_TILE,
+  DOOR_TILE,
+  isInsideRoom,
+} from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
 import SpeechBubble from "./SpeechBubble";
@@ -20,8 +29,9 @@ function FriendsIcon() {
 
 // A read-only avatar for someone else currently in this dorm - no input
 // handling, no click-to-move, just rendered at their last-known position
-// (see social/usePresence.js).
-function RemoteAvatar({ occupant, bubbleText }) {
+// (see social/usePresence.js). Exported for CommonsWorld.jsx to reuse -
+// occupant rendering is identical there, just a different shared room.
+export function RemoteAvatar({ occupant, bubbleText }) {
   const skin = KING_SKINS[occupant.skin] || KING_SKINS.classic;
   const style = { transform: `translate(${occupant.x * TILE_SIZE}px, ${occupant.y * TILE_SIZE}px)` };
   return (
@@ -41,8 +51,8 @@ function RemoteAvatar({ occupant, bubbleText }) {
 // Movement's own keydown listeners (AvatarController's WASD/arrows, and the
 // "E to interact" one below) already skip acting while an <input>/
 // <textarea> has focus, so typing here never also walks the avatar around
-// or opens the pedestal overlay.
-const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
+// or opens the pedestal overlay. Exported for CommonsWorld.jsx to reuse.
+export const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
   const [value, setValue] = useState("");
 
   function handleKeyDown(e) {
@@ -72,21 +82,18 @@ const ChatBar = forwardRef(function ChatBar({ onSend }, ref) {
 // Extra space above row 0 so a tall avatar/prop sprite's head has room to
 // stick up past the top of its own tile without being clipped by the
 // room's overflow:hidden edge - a standing character is taller than the
-// footprint tile it stands on.
-const HEADROOM = 40;
+// footprint tile it stands on. Exported for CommonsWorld.jsx to reuse -
+// same grid, same avatar, same headroom need.
+export const HEADROOM = 40;
 
-// Purely decorative - a signboard standing on the floor near the back of
-// the room, between the two pedestals (see useHubState.js's
-// LEADERBOARD_TILE). Not an InteractiveTrigger: no proximity glow, no
-// click handler - just art anchored to the bottom of its tile (like the
-// pedestals below) so it reads as real furniture rather than a wall decal.
+// A signboard standing on the floor near the back of the room, between the
+// two pedestals (see useHubState.js's LEADERBOARD_TILE) - now a real
+// InteractiveTrigger showing top ELO standings, same treatment as the
+// pedestals below (proximity glow, "press E" prompt, click-to-activate).
 function LeaderboardProp() {
   return (
-    <div
-      className="leaderboard-prop"
-      style={{ transform: `translate(${LEADERBOARD_TILE.x * TILE_SIZE}px, ${LEADERBOARD_TILE.y * TILE_SIZE}px)` }}
-      aria-hidden="true"
-    >
+    <div className="leaderboard-prop">
+      <div className="leaderboard-glow" aria-hidden="true" />
       <img src="/pieces/props/leaderboard.png" alt="" className="leaderboard-prop-img" draggable={false} />
     </div>
   );
@@ -218,7 +225,19 @@ function VisitingBanner({ username, onReturnHome }) {
 // HeroChessApp, since it needs the friend's username which presence alone
 // doesn't carry) is who this dorm actually belongs to right now, if not
 // the signed-in player themself.
-export default function HubWorld({ hub, username, presence, visiting, onReturnHome, onOpenFriends, onOpenPuzzleRush, onOpenSkins, onLogout }) {
+export default function HubWorld({
+  hub,
+  username,
+  presence,
+  visiting,
+  onReturnHome,
+  onOpenFriends,
+  onOpenPuzzleRush,
+  onOpenSkins,
+  onOpenLeaderboard,
+  onOpenCommons,
+  onLogout,
+}) {
   const equippedSkin = useEquippedSkin();
   const skin = KING_SKINS[equippedSkin];
   const isVisiting = Boolean(visiting);
@@ -260,10 +279,10 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
   // "E to interact" - the keyboard-native counterpart to clicking a
   // pedestal directly, active only while standing next to one (and, for
   // the PvP pedestal, only in your own dorm - see VisitingBanner above;
-  // the Puzzle Rush pedestal has no such ambiguity, so it works while
-  // visiting too, same as the side-panel Puzzles button). Skipped while
-  // the chat input (or any other input/textarea) has focus, so typing the
-  // letter "e" in a message never also pops an overlay open.
+  // the Puzzle Rush pedestal and the leaderboard have no such ambiguity, so
+  // they work while visiting too, same as the side-panel Puzzles button).
+  // Skipped while the chat input (or any other input/textarea) has focus,
+  // so typing the letter "e" in a message never also pops an overlay open.
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key.toLowerCase() !== "e") return;
@@ -271,10 +290,22 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!isVisiting && hub.isNearPedestal) hub.setActiveOverlay("match-queue");
       else if (hub.isNearPuzzlePedestal) onOpenPuzzleRush();
+      else if (hub.isNearLeaderboard) onOpenLeaderboard();
+      else if (!isVisiting && hub.isNearDoor) onOpenCommons();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hub.isNearPedestal, hub.isNearPuzzlePedestal, hub.setActiveOverlay, isVisiting, onOpenPuzzleRush]);
+  }, [
+    hub.isNearPedestal,
+    hub.isNearPuzzlePedestal,
+    hub.isNearLeaderboard,
+    hub.isNearDoor,
+    hub.setActiveOverlay,
+    isVisiting,
+    onOpenPuzzleRush,
+    onOpenLeaderboard,
+    onOpenCommons,
+  ]);
 
   // Broadcast this avatar's own position/facing/skin to whoever else is in
   // the same dorm right now, whenever any of them change.
@@ -331,6 +362,18 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
               />
             )}
 
+            {!isVisiting && (
+              <InteractiveTrigger
+                tile={DOOR_TILE}
+                tileSize={TILE_SIZE}
+                isNear={hub.isNearDoor}
+                label="Commons"
+                promptLabel="Click or press E"
+                icon={<span aria-hidden="true">🚪</span>}
+                onActivate={onOpenCommons}
+              />
+            )}
+
             <InteractiveTrigger
               tile={PUZZLE_PEDESTAL_TILE}
               tileSize={TILE_SIZE}
@@ -342,7 +385,16 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
               onActivate={onOpenPuzzleRush}
             />
 
-            <LeaderboardProp />
+            <InteractiveTrigger
+              tile={LEADERBOARD_TILE}
+              tileSize={TILE_SIZE}
+              isNear={hub.isNearLeaderboard}
+              label="Leaderboard"
+              promptLabel="Click or press E"
+              variant="leaderboard"
+              icon={<LeaderboardProp />}
+              onActivate={onOpenLeaderboard}
+            />
 
             {presence?.occupants.map((occupant) => (
               <RemoteAvatar
@@ -370,7 +422,7 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}
           {isVisiting
             ? "This is someone else's dorm - just visiting."
-            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for Puzzle Rush."}
+            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for Puzzle Rush and the Daily Puzzle."}
         </p>
       </div>
     </>

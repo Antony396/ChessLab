@@ -359,17 +359,20 @@
   z-index: 1;
 }
 
-/* Both pedestals are real pieces of furniture, not an icon-in-a-box - each
-   one's own .hub-trigger-icon box is unset so its own prop image takes
-   over the whole footprint, taller than the tile it stands on (like the
-   avatar, anchored at the bottom and overflowing upward). */
+/* Both pedestals (and the leaderboard signboard below) are real pieces of
+   furniture, not an icon-in-a-box - each one's own .hub-trigger-icon box
+   is unset so its own prop image takes over the whole footprint, taller
+   than the tile it stands on (like the avatar, anchored at the bottom and
+   overflowing upward). */
 .hub-trigger-pedestal,
-.hub-trigger-puzzle-pedestal {
+.hub-trigger-puzzle-pedestal,
+.hub-trigger-leaderboard {
   overflow: visible;
 }
 
 .hub-trigger-pedestal .hub-trigger-icon,
-.hub-trigger-puzzle-pedestal .hub-trigger-icon {
+.hub-trigger-puzzle-pedestal .hub-trigger-icon,
+.hub-trigger-leaderboard .hub-trigger-icon {
   width: auto;
   height: auto;
   background: none;
@@ -378,7 +381,8 @@
 }
 
 .hub-trigger-pedestal.near .hub-trigger-icon,
-.hub-trigger-puzzle-pedestal.near .hub-trigger-icon {
+.hub-trigger-puzzle-pedestal.near .hub-trigger-icon,
+.hub-trigger-leaderboard.near .hub-trigger-icon {
   transform: none;
 }
 
@@ -454,22 +458,28 @@
   filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
 }
 
-/* Floor-standing, not wall-mounted - anchored to the bottom of its tile
-   the same way the pedestals are (see .hub-trigger's flex-end above),
-   just without the InteractiveTrigger button/glow/prompt machinery since
-   there's nothing to activate here yet. */
+/* The leaderboard signboard - same treatment as the pedestals above. */
 .leaderboard-prop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 72px;
-  height: 72px;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  pointer-events: none;
-  z-index: 1;
+  width: 78px;
+}
+
+.leaderboard-glow {
+  position: absolute;
+  bottom: 6px;
+  width: 56px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 197, 66, 0.35), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.hub-trigger-leaderboard.near .leaderboard-glow {
+  opacity: 1;
 }
 
 .leaderboard-prop-img {
@@ -477,6 +487,11 @@
   width: 78px;
   height: auto;
   filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.55));
+  transition: filter 0.2s ease;
+}
+
+.hub-trigger-leaderboard.near .leaderboard-prop-img {
+  filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
 }
 
 .hub-chat-input {
@@ -780,6 +795,35 @@
   background: rgba(212, 175, 55, 0.1);
 }
 
+.skin-card.locked {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.skin-card.locked:hover {
+  border-color: var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.skin-card.locked .skin-card-img {
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)) grayscale(1);
+}
+
+.skin-card-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--hc-border-strong);
+  color: var(--hc-text-h);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
 .skin-card-badge {
   position: absolute;
   top: 6px;
@@ -814,6 +858,42 @@
   font-size: 12px;
   font-weight: 600;
   text-align: center;
+}
+
+.puzzle-choice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.puzzle-choice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 16px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.puzzle-choice-card:hover {
+  border-color: var(--hc-gold);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.puzzle-choice-name {
+  color: var(--hc-text-h);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.puzzle-choice-desc {
+  color: var(--hc-text);
+  font-size: 12px;
 }
 
 .challenge-prompt-backdrop {

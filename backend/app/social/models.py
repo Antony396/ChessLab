@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -16,6 +18,7 @@ class LoginRequest(BaseModel):
 class UserPublic(BaseModel):
     id: str
     username: str
+    elo: int = 1000
 
 
 class AuthResponse(BaseModel):
@@ -35,6 +38,22 @@ class UserSearchResult(BaseModel):
 class FriendRequestPublic(BaseModel):
     id: str
     from_user: UserPublic
+
+
+class LeaderboardEntry(BaseModel):
+    rank: int
+    id: str
+    username: str
+    elo: int
+
+
+class LeaderboardResponse(BaseModel):
+    entries: list[LeaderboardEntry]
+    # My own standing, even if I fall outside `entries` (a short top-N list)
+    # - None only if I'm somehow not a real account, which shouldn't happen
+    # for an authenticated caller.
+    my_rank: Optional[int] = None
+    my_elo: Optional[int] = None
 
 
 class FriendPublic(BaseModel):

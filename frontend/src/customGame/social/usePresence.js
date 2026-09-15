@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { presenceWsUrl } from "./api";
 
 export const CHAT_BUBBLE_DURATION_MS = 6000;
+// Mirrors social_routes.py's own COMMONS_DORM_ID exactly - passing this as
+// visit()'s target is how a client asks to join the shared Commons room
+// instead of a specific account's dorm (see CommonsWorld.jsx).
+export const COMMONS_DORM_ID = "__commons__";
 
 // Owns the single live presence WebSocket connection for a logged-in
 // session: which dorm this browser is currently "standing in" (own by

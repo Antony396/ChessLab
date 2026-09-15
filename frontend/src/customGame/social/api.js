@@ -43,6 +43,10 @@ export function searchUsers(token, q) {
   return fetch(`${API_BASE}/users/search?q=${encodeURIComponent(q)}`, { headers: authHeaders(token) }).then(handle);
 }
 
+export function fetchLeaderboard(token) {
+  return fetch(`${API_BASE}/leaderboard`, { headers: authHeaders(token) }).then(handle);
+}
+
 export function sendFriendRequest(token, toUserId) {
   return fetch(`${API_BASE}/friends/request`, {
     method: "POST",

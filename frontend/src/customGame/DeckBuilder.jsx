@@ -728,6 +728,12 @@ export default function DeckBuilder({
       const payload = {
         white_back_rank: buildBackRank(),
         white_evolved_squares: buildEvolvedSquares(),
+        // Links this game to my account so a real win/loss/draw can update
+        // my ELO (see backend's online_create/online_move) - optional, so
+        // an unauthenticated context (there isn't one right now, but
+        // nothing here assumes there never will be) still creates a game,
+        // just one that can't rate either side.
+        auth_token: token,
       };
       const game = await postOnlineCreate(payload);
       onOnlineGameCreated(game);
@@ -772,6 +778,7 @@ export default function DeckBuilder({
       const payload = {
         black_back_rank: buildBackRank(),
         black_evolved_squares: buildEvolvedSquares(),
+        auth_token: token,
       };
       const joined = await postOnlineRoomJoin(roomId, payload);
       onOnlineDeckSubmitted(joined);

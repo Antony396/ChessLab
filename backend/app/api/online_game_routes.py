@@ -26,6 +26,7 @@ import uuid
 import chess
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
+from app import db
 from app.api.custom_game_routes import (
     _apply_move,
     _build_game_from_two_decks,
@@ -34,6 +35,7 @@ from app.api.custom_game_routes import (
     _validate_deck_points,
 )
 from app.custom_chess import rules, store
+from app.social import store as social_store
 from app.custom_chess.models import (
     CustomGameState,
     CustomSetupRequest,
@@ -82,6 +84,8 @@ def online_create(payload: CustomSetupRequest):
     _validate_deck_points(payload.white_back_rank, payload.white_evolved_squares)
     white_token = uuid.uuid4().hex
     room = store.create_room(payload.white_back_rank, payload.white_evolved_squares, white_token)
+    if payload.auth_token:
+        room.white_user_id = social_store.get_user_id_for_token(payload.auth_token)
     return OnlineRoomCreateResponse(room_id=room.id, white_token=white_token)
 
 
@@ -124,6 +128,9 @@ async def online_room_join(room_id: str, payload: OnlineRoomJoinRequest):
     )
     game.white_token = room.white_token
     game.black_token = uuid.uuid4().hex
+    game.white_user_id = room.white_user_id
+    if payload.auth_token:
+        game.black_user_id = social_store.get_user_id_for_token(payload.auth_token)
     room.game_id = game.id
 
     state = _to_state(game)
@@ -168,6 +175,18 @@ async def online_move(payload: OnlineMoveRequest):
 
     game.action_log.append(log_entry)
     game.status = _compute_status(game)
+
+    # ELO only ever applies to a real game between two known accounts (see
+    # CustomGame.white_user_id/black_user_id) - a vs_ai/local-sandbox game,
+    # or an online game where either side never linked an account, leaves
+    # both None and this is a no-op. Deliberately NOT read back into the
+    # broadcast state below - see db.py's own note on why _to_state stays
+    # elo-free on this hot a path (every move, every reconnect).
+    if game.status != "in_progress" and game.white_user_id and game.black_user_id:
+        result = "draw"
+        if game.status == "checkmate":
+            result = "white" if mover_color == chess.WHITE else "black"
+        db.apply_elo_result(game.white_user_id, game.black_user_id, result)
 
     state = _to_state(game)
     await manager.broadcast(payload.game_id, state.model_dump())

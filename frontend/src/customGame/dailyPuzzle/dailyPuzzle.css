@@ -1,0 +1,110 @@
+/* Mirrors puzzleRush.css's structure/tokens closely - same visual family,
+   different content. */
+.daily-puzzle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.daily-puzzle-menu {
+  max-width: 420px;
+  margin: 40px auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.daily-puzzle-menu h1 {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+  background: linear-gradient(135deg, #fff 0%, var(--hc-gold) 60%, var(--hc-gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.daily-puzzle-menu p {
+  color: var(--hc-text);
+  margin: 0;
+}
+
+.daily-puzzle-streak {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 64px;
+  color: var(--hc-gold);
+  margin: 4px 0 0;
+  line-height: 1;
+}
+
+.daily-puzzle-longest {
+  font-size: 12px;
+  color: var(--hc-text);
+}
+
+.daily-puzzle-back-btn {
+  margin-top: 4px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.daily-puzzle-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 480px;
+  justify-content: space-between;
+}
+
+.daily-puzzle-date {
+  font-weight: 600;
+  color: var(--hc-text);
+  font-size: 13px;
+}
+
+.daily-puzzle-streak-badge {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--hc-text-h);
+}
+
+.daily-puzzle-toolbar button {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 16px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.daily-puzzle-board-wrap {
+  width: 100%;
+  max-width: 480px;
+  border-radius: 6px;
+  transition: box-shadow 0.15s ease;
+}
+
+.daily-puzzle-board-wrap.flash-correct {
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.7);
+}
+
+.daily-puzzle-board-wrap.flash-wrong {
+  box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.7);
+}

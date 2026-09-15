@@ -22,6 +22,15 @@ import { pieceImageSrc } from "../pieces/flat2dPieces";
 // head/crown (see frontend/public/pieces/avatars/*-head.png) - used by the
 // profile picture badge, so it doesn't have to guess a crop from the
 // full-body/full-piece art at render time.
+//
+// requiresStreak (optional): a Daily Puzzle streak-gated skin - the
+// backend tracks each account's current daily-puzzle streak (see
+// app/db.py's daily_puzzle_streaks table / STREAK_UNLOCK_SKIN_DAYS), and
+// SkinsPanel.jsx checks it against this before letting the skin be
+// equipped, showing a lock + "solve N days in a row" message otherwise.
+// No entry actually sets this yet - it's foundation for whenever a
+// streak-reward skin's art exists; isSkinUnlocked below is what any new
+// entry should be checked against, not this field directly.
 export const KING_SKINS = {
   classic: {
     name: "Classic King",
@@ -142,8 +151,18 @@ export function getEquippedSkin() {
   return equippedSkin;
 }
 
-export function setEquippedSkin(key) {
+// currentStreak is optional - callers with no streak info yet (or an
+// anonymous/not-yet-fetched context) can omit it, which locks every
+// requiresStreak skin by default rather than guessing they're unlocked.
+export function isSkinUnlocked(key, currentStreak = 0) {
+  const skin = KING_SKINS[key];
+  if (!skin) return false;
+  return !skin.requiresStreak || currentStreak >= skin.requiresStreak;
+}
+
+export function setEquippedSkin(key, currentStreak = 0) {
   if (!KING_SKINS[key] || key === equippedSkin) return;
+  if (!isSkinUnlocked(key, currentStreak)) return;
   equippedSkin = key;
   try {
     localStorage.setItem(STORAGE_KEY, key);

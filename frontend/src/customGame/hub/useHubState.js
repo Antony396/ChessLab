@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEquippedSkin, setEquippedSkin } from "../skinStore";
 import { playHopSound } from "../sound";
 
@@ -38,6 +38,22 @@ export const LEADERBOARD_TILE = { x: 10, y: 2 };
 // background art.
 const AVATAR_START = { x: 7, y: 6 };
 
+// The Commons - a single shared room every connected user can walk into
+// together (see social_routes.py's COMMONS_DORM_ID), reached through the
+// dorm's own door and left through a matching one back. Reuses this same
+// grid (HUB_COLS/HUB_ROWS/TILE_SIZE, isInsideRoom's ellipse) rather than
+// defining its own - see CommonsWorld.jsx for why: it's the same
+// background-image-in-an-oval treatment as the dorm, just a different
+// image and different furniture. EXIT_TILE lines up with the arched
+// double doors painted at the top-center of commons.jpg; AVATAR_START
+// spawns just in front of them, mirroring how the dorm's own AVATAR_START
+// lines up with ITS entrance notch.
+export const COMMONS_EXIT_TILE = { x: 7, y: 1 };
+const COMMONS_AVATAR_START = { x: 7, y: 2 };
+// The dorm's own door, leading out to the Commons - positioned to match
+// the painted door on the left wall of dorm-room.jpg.
+export const DOOR_TILE = { x: 1, y: 2 };
+
 // The room reads as round (igloo-inspired) by inscribing an ellipse in the
 // tile grid's bounding box and treating anything outside it as unwalkable -
 // the actual movement grid stays plain rectangular coordinates underneath
@@ -65,11 +81,17 @@ function tilesEqual(a, b) {
   return a.x === b.x && a.y === b.y;
 }
 
-function isBlocked(tile) {
+// room is "dorm" (default) or "commons" - each has its own set of
+// unwalkable prop tiles (see useHubState's own room param below).
+function isBlocked(tile, room) {
+  if (room === "commons") {
+    return tilesEqual(tile, COMMONS_EXIT_TILE) || !isInsideRoom(tile);
+  }
   return (
     tilesEqual(tile, PEDESTAL_TILE) ||
     tilesEqual(tile, PUZZLE_PEDESTAL_TILE) ||
     tilesEqual(tile, LEADERBOARD_TILE) ||
+    tilesEqual(tile, DOOR_TILE) ||
     !isInsideRoom(tile)
   );
 }
@@ -86,8 +108,15 @@ function chebyshevDistance(a, b) {
 // any) is currently open, and match-queue status. A plain hook rather than
 // a Context - nothing outside HubWorld's own tree needs this state, so a
 // Provider would just be ceremony.
-export function useHubState() {
-  const [position, setPosition] = useState(AVATAR_START);
+//
+// room ("dorm" | "commons") - the SAME position/facing/step/walkTo state
+// serves both rooms rather than each having its own hook instance, since
+// switching between them is really just "which grid's blocked-tile rules
+// and start position apply right now" (see isBlocked above) - the effect
+// below resets position to the new room's own start the moment room
+// changes, the same way arriving at a fresh location always would.
+export function useHubState(room = "dorm") {
+  const [position, setPosition] = useState(room === "commons" ? COMMONS_AVATAR_START : AVATAR_START);
   const [facing, setFacing] = useState("down");
   const [isHopping, setIsHopping] = useState(false);
   // Shared with the deck builder and the game board (see skinStore.js) -
@@ -103,6 +132,9 @@ export function useHubState() {
 
   const isNearPedestal = chebyshevDistance(position, PEDESTAL_TILE) <= 1;
   const isNearPuzzlePedestal = chebyshevDistance(position, PUZZLE_PEDESTAL_TILE) <= 1;
+  const isNearLeaderboard = chebyshevDistance(position, LEADERBOARD_TILE) <= 1;
+  const isNearDoor = chebyshevDistance(position, DOOR_TILE) <= 1;
+  const isNearCommonsExit = chebyshevDistance(position, COMMONS_EXIT_TILE) <= 1;
 
   const hopDuration = 220; // ms - must match hubWorld.css's .avatar.hopping animation
 
@@ -115,10 +147,23 @@ export function useHubState() {
   // Mirrors `position` for synchronous reads inside step()/walkTo() below -
   // see their own comments for why this can't just read `position` (the
   // state variable) or use setPosition's functional-updater form instead.
-  const positionRef = useRef(AVATAR_START);
+  const positionRef = useRef(position);
   // Click-to-move keeps its own interval/timeout alive across renders so a
   // second click can cancel an in-flight walk before starting a new one.
   const walkHandleRef = useRef(null);
+
+  // Arriving in a (possibly new) room resets position to ITS start - runs
+  // on mount too (a harmless no-op there, already the same value), and
+  // again on every room switch (see this hook's own docstring above).
+  // Also cancels any walk-in-progress from the room just left, same as a
+  // fresh arrival anywhere should.
+  useEffect(() => {
+    walkHandleRef.current?.();
+    const start = room === "commons" ? COMMONS_AVATAR_START : AVATAR_START;
+    positionRef.current = start;
+    setPosition(start);
+    setFacing("down");
+  }, [room]);
 
   const step = useCallback(
     (direction) => {
@@ -136,7 +181,7 @@ export function useHubState() {
       // whichever invocation React kept). Reading/writing positionRef here
       // instead means there's no updater function for React to double-
       // invoke - just a single, plain setPosition(next) value call.
-      if (!inBounds(next) || isBlocked(next)) return; // walked into a wall/prop - no hop, no cooldown
+      if (!inBounds(next) || isBlocked(next, room)) return; // walked into a wall/prop - no hop, no cooldown
       positionRef.current = next;
       setPosition(next);
       playHopSound();
@@ -147,7 +192,7 @@ export function useHubState() {
         setIsHopping(false);
       }, hopDuration);
     },
-    [hopDuration]
+    [hopDuration, room]
   );
 
   // Click-to-move: walks one tile at a time toward the target, Club
@@ -188,7 +233,7 @@ export function useHubState() {
         const direction = dx !== 0 ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
         const { dx: sdx, dy: sdy } = DIRECTION_OFFSETS[direction];
         const next = { x: prev.x + sdx, y: prev.y + sdy };
-        if (!inBounds(next) || isBlocked(next)) {
+        if (!inBounds(next) || isBlocked(next, room)) {
           stop();
           return;
         }
@@ -211,7 +256,7 @@ export function useHubState() {
       }
       return stop;
     },
-    [hopDuration]
+    [hopDuration, room]
   );
 
   return {
@@ -226,6 +271,9 @@ export function useHubState() {
     setMatchQueueStatus,
     isNearPedestal,
     isNearPuzzlePedestal,
+    isNearLeaderboard,
+    isNearDoor,
+    isNearCommonsExit,
     step,
     walkTo,
   };

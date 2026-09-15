@@ -16,7 +16,16 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env.test", overrid
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import init_db
 from app.main import app
+
+# A plain TestClient(app) (no `with`) never fires FastAPI's startup event,
+# so init_db() - which is what actually adds any newly-introduced column
+# (see db.py's own note on why the elo column is a separate ALTER rather
+# than folding into the users table's CREATE) - would otherwise never run
+# against this test branch at all. Idempotent, so safe to call once here
+# rather than relying on lifespan firing.
+init_db()
 
 
 @pytest.fixture()

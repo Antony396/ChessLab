@@ -27,6 +27,7 @@ frontend/dist/
 /top10%_andtop1.png
 /PuzzlerushPedestal.png
 /Pvp_pedestal_andLeaderbaord.png
+/Commons.png
 .neon
 .env.local
 .env.test

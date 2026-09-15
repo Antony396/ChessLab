@@ -34,6 +34,8 @@ from app.social.models import (
     ChallengeResponse,
     FriendPublic,
     FriendRequestPublic,
+    LeaderboardEntry,
+    LeaderboardResponse,
     LoginRequest,
     RegisterRequest,
     SendFriendRequestPayload,
@@ -50,7 +52,7 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
 
 
 def _user_public(row) -> UserPublic:
-    return UserPublic(id=row["id"], username=row["username"])
+    return UserPublic(id=row["id"], username=row["username"], elo=row.get("elo", db.DEFAULT_ELO))
 
 
 # --- Registration / login ---------------------------------------------------
@@ -71,7 +73,7 @@ def register(payload: RegisterRequest):
         raise HTTPException(409, "That username is already taken")
 
     token = store.create_session(user["id"])
-    return AuthResponse(token=token, user=UserPublic(id=user["id"], username=user["username"]))
+    return AuthResponse(token=token, user=UserPublic(id=user["id"], username=user["username"], elo=db.DEFAULT_ELO))
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -81,6 +83,25 @@ def login(payload: LoginRequest):
         raise HTTPException(401, "Incorrect username or password")
     token = store.create_session(row["id"])
     return AuthResponse(token=token, user=_user_public(row))
+
+
+@router.get("/leaderboard", response_model=LeaderboardResponse)
+def leaderboard(limit: int = 20, user_id: str = Depends(get_current_user_id)):
+    """Top `limit` accounts by ELO (see db.py's apply_elo_result for how it
+    actually changes - only real online-game results move it). Always
+    includes the caller's own rank/elo alongside the top-N list, even if
+    they're well outside it, so "where do I stand" doesn't need a second
+    request."""
+    rows = db.get_leaderboard(limit)
+    entries = [
+        LeaderboardEntry(rank=i + 1, id=row["id"], username=row["username"], elo=row["elo"])
+        for i, row in enumerate(rows)
+    ]
+    return LeaderboardResponse(
+        entries=entries,
+        my_rank=db.get_leaderboard_rank(user_id),
+        my_elo=db.get_elo(user_id),
+    )
 
 
 @router.post("/logout")
@@ -206,7 +227,7 @@ async def challenge_friend(payload: ChallengeRequest, user_id: str = Depends(get
 
     white_token = uuid.uuid4().hex
     black_token = uuid.uuid4().hex
-    room = game_store.create_simul_room(white_token, black_token, challenger_id=user_id)
+    room = game_store.create_simul_room(white_token, black_token, challenger_id=user_id, black_user_id=payload.to_user_id)
 
     challenger = db.get_user_by_id(user_id)
     delivered = False
@@ -296,6 +317,8 @@ async def submit_simul_deck(room_id: str, payload: SimulSubmitRequest):
     )
     game.white_token = room.white_token
     game.black_token = room.black_token
+    game.white_user_id = room.challenger_id
+    game.black_user_id = room.black_user_id
     room.game_id = game.id
 
     state = _to_state(game)
@@ -333,6 +356,16 @@ async def simul_room_ws(websocket: WebSocket, room_id: str):
 # --- Live presence: sessions, dorm-visiting, movement relay ----------------
 
 CHAT_MAX_LENGTH = 200
+# A sentinel "dorm" id (never a real account id, which are always hex
+# uuids) representing the shared Commons area - a single room every
+# connected user can walk into together, unlike every other dorm here
+# which belongs to exactly one account. connections_in_dorm/_broadcast_to_
+# dorm below don't need to know this is special at all: viewing_dorm_of is
+# just a string key, so routing "everyone standing in the Commons right
+# now" works identically to routing "everyone standing in Alice's dorm
+# right now" - the only place that DOES need to know is the "visit"
+# handler's friends-only check, which this bypasses.
+COMMONS_DORM_ID = "__commons__"
 
 
 def _sanitize_chat_text(raw: Optional[str]) -> Optional[str]:
@@ -401,7 +434,7 @@ async def presence_ws(websocket: WebSocket, token: str):
 
             elif msg_type == "visit":
                 target_id = msg.get("user_id")
-                if target_id != user_id and not db.are_friends(user_id, target_id):
+                if target_id != COMMONS_DORM_ID and target_id != user_id and not db.are_friends(user_id, target_id):
                     await websocket.send_json({"type": "error", "message": "You can only visit a friend's dorm"})
                     continue
                 old_dorm = conn.viewing_dorm_of
