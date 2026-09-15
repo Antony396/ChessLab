@@ -205,6 +205,76 @@ def test_mirror_king_mimic_respects_check_safety():
         rules.execute_mirror_move(board, chess.Move.from_uci("e2d3"), chess.KING)
 
 
+# --- Mirror mimicking an Archer (relocate/shoot) -----------------------
+#
+# Regression coverage for "Archer isn't being mirrored properly": an
+# Archer's relocate (king-step, move-only) and shoot (knight-shape,
+# non-relocating capture) are both recorded under the same KNIGHT type as a
+# plain Knight or a Hydra move, since that's the Archer's storage type -
+# execute_mirror_move's generic KNIGHT branch (a real Knight's legal_moves
+# check) can represent neither shape correctly, so these need their own
+# dedicated execute_mirror_archer_move/execute_mirror_archer_shoot, exactly
+# like the real Archer has its own execute_archer_move/execute_archer_shoot.
+
+
+def test_mirror_mimics_archer_relocate():
+    board = _board({**_kings(), chess.D4: chess.Piece(chess.BISHOP, chess.WHITE)})
+    rules.execute_mirror_archer_move(board, chess.Move.from_uci("d4e5"))
+    assert board.piece_at(chess.E5).piece_type == chess.BISHOP
+    assert board.piece_at(chess.D4) is None
+
+
+def test_mirror_archer_relocate_rejects_knight_shape():
+    # A knight-shape destination is illegal for the relocate mode - that's
+    # what the shoot mode below is for.
+    board = _board({**_kings(), chess.A1: chess.Piece(chess.BISHOP, chess.WHITE)})
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_archer_move(board, chess.Move.from_uci("a1b3"))
+
+
+def test_mirror_archer_relocate_rejects_occupied_square():
+    # Move-only, never a capture - same rule as the real Archer's own
+    # relocate (execute_archer_move).
+    board = _board({**_kings(), chess.D4: chess.Piece(chess.BISHOP, chess.WHITE), chess.E5: chess.Piece(chess.PAWN, chess.BLACK)})
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_archer_move(board, chess.Move.from_uci("d4e5"))
+
+
+def test_mirror_archer_relocate_respects_check_safety():
+    board = _board(
+        {
+            chess.E1: chess.Piece(chess.KING, chess.WHITE),
+            chess.E8: chess.Piece(chess.ROOK, chess.BLACK),
+            chess.E3: chess.Piece(chess.BISHOP, chess.WHITE),
+            chess.H8: chess.Piece(chess.KING, chess.BLACK),
+        }
+    )
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_archer_move(board, chess.Move.from_uci("e3d3"))  # steps off the pinning e-file
+
+
+def test_mirror_mimics_archer_shoot():
+    board = _board({**_kings(), chess.A1: chess.Piece(chess.BISHOP, chess.WHITE), chess.B3: chess.Piece(chess.PAWN, chess.BLACK)})
+    rules.execute_mirror_archer_shoot(board, chess.Move.from_uci("a1b3"))
+    assert board.piece_at(chess.B3) is None
+    # Unlike a relocate, the Mirror itself never moves - it stays put.
+    assert board.piece_at(chess.A1).piece_type == chess.BISHOP
+
+
+def test_mirror_archer_shoot_cannot_target_king():
+    # d6->e8 is a knight's-move away, and e8 already holds Black's king
+    # (see _kings()).
+    board = _board({**_kings(), chess.D6: chess.Piece(chess.BISHOP, chess.WHITE)})
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_archer_shoot(board, chess.Move.from_uci("d6e8"))
+
+
+def test_mirror_archer_shoot_requires_an_enemy_target():
+    board = _board({**_kings(), chess.A1: chess.Piece(chess.BISHOP, chess.WHITE)})
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_archer_shoot(board, chess.Move.from_uci("a1b3"))  # b3 is empty
+
+
 # --- Route-level integration --------------------------------------------
 
 
@@ -276,6 +346,64 @@ def test_mirror_mimics_hydra_ring_extra_move_end_to_end():
     assert game.board.piece_at(chess.C3).piece_type == chess.BISHOP
     assert game.white_last_moved_type == chess.KNIGHT
     assert game.white_last_moved_was_hydra is True
+
+
+def test_mirror_mimics_archer_relocate_end_to_end():
+    board = chess.Board(None)
+    board.set_piece_at(chess.E1, chess.Piece(chess.KING, chess.WHITE))
+    board.set_piece_at(chess.C1, chess.Piece(chess.BISHOP, chess.WHITE))  # Mirror
+    board.set_piece_at(chess.E2, chess.Piece(chess.PAWN, chess.WHITE))
+    board.set_piece_at(chess.E8, chess.Piece(chess.KING, chess.BLACK))
+    board.set_piece_at(chess.B8, chess.Piece(chess.KNIGHT, chess.BLACK))  # Archer
+    board.turn = chess.WHITE
+    game = store.create_game(board, white_mirror_squares={chess.C1}, black_archer_square=chess.B8)
+
+    routes._apply_move(game, chess.WHITE, chess.E2, chess.E4, False, "e2", "e4")  # White moves first
+    routes._apply_move(game, chess.BLACK, chess.B8, chess.B7, False, "b8", "b7")  # Archer relocate (king-step)
+    assert game.black_archer_square == chess.B7
+    assert game.black_last_moved_type == chess.KNIGHT
+    assert game.black_last_moved_was_archer is True
+
+    # c1-d2 is a king-step - illegal for a plain Knight (or a Hydra), only
+    # reachable because the Mirror knows the move it's copying was
+    # specifically an Archer's relocate.
+    routes._apply_move(game, chess.WHITE, chess.C1, chess.D2, False, "c1", "d2")
+    assert game.white_mirror_squares == {chess.D2}
+    assert game.board.piece_at(chess.D2).piece_type == chess.BISHOP
+    assert game.white_last_moved_type == chess.KNIGHT
+    assert game.white_last_moved_was_archer is True
+
+
+def test_mirror_mimics_archer_shoot_end_to_end():
+    board = chess.Board(None)
+    board.set_piece_at(chess.E1, chess.Piece(chess.KING, chess.WHITE))
+    board.set_piece_at(chess.A1, chess.Piece(chess.BISHOP, chess.WHITE))  # Mirror
+    board.set_piece_at(chess.B3, chess.Piece(chess.PAWN, chess.BLACK))  # target for White's shot
+    board.set_piece_at(chess.E2, chess.Piece(chess.PAWN, chess.WHITE))
+    board.set_piece_at(chess.E8, chess.Piece(chess.KING, chess.BLACK))
+    board.set_piece_at(chess.B8, chess.Piece(chess.KNIGHT, chess.BLACK))  # Archer
+    board.set_piece_at(chess.A6, chess.Piece(chess.PAWN, chess.WHITE))  # target for Black's shot
+    board.turn = chess.WHITE
+    game = store.create_game(board, white_mirror_squares={chess.A1}, black_archer_square=chess.B8)
+
+    routes._apply_move(game, chess.WHITE, chess.E2, chess.E4, False, "e2", "e4")  # White moves first
+    routes._apply_move(game, chess.BLACK, chess.B8, chess.A6, True, "b8", "a6")  # Archer shoots
+    assert game.board.piece_at(chess.A6) is None
+    assert game.black_archer_square == chess.B8  # a shoot never relocates the shooter
+    assert game.black_last_moved_type == chess.KNIGHT
+    assert game.black_last_moved_was_archer is True
+
+    # a1-b3 is a knight's-move away - illegal as a plain Knight/Hydra shoot
+    # target only in the sense that a plain Knight has no "shoot" mode at
+    # all; what this actually regression-tests is that the Mirror itself
+    # does NOT relocate to b3 (the real bug: _update_mirror_tracking used
+    # to relocate unconditionally, even for a shoot).
+    routes._apply_move(game, chess.WHITE, chess.A1, chess.B3, True, "a1", "b3")
+    assert game.board.piece_at(chess.B3) is None
+    assert game.white_mirror_squares == {chess.A1}
+    assert game.board.piece_at(chess.A1).piece_type == chess.BISHOP
+    assert game.white_last_moved_type == chess.KNIGHT
+    assert game.white_last_moved_was_archer is True
 
 
 def test_mirror_mimics_pawn_promotion_to_back_rank():

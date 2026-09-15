@@ -71,6 +71,8 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const mirrorMimicType = opponentLastMovedType ? opponentLastMovedType.toLowerCase() : null;
   const mirrorMimicIsHydra =
     myColor === "white" ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
+  const mirrorMimicIsArcher =
+    myColor === "white" ? gameState.black_last_moved_was_archer : gameState.white_last_moved_was_archer;
 
   // Both players read every state update off the same broadcast, rather
   // than the mover trusting its own POST response and the opponent trusting
@@ -172,6 +174,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     const mirrorSquares = (isWhite ? gameState.white_mirror_squares : gameState.black_mirror_squares) || [];
     const opponentLastType = isWhite ? gameState.black_last_moved_type : gameState.white_last_moved_type;
     const mimicIsHydra = isWhite ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
+    const mimicIsArcher = isWhite ? gameState.black_last_moved_was_archer : gameState.white_last_moved_was_archer;
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
@@ -184,6 +187,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         isMirrorSquare: mirrorSquares.includes(square),
         mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
         mirrorMimicIsHydra: mimicIsHydra,
+        mirrorMimicIsArcher: mimicIsArcher,
         ownPopeSquare: popeSquare,
       })
     );
@@ -229,8 +233,14 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     // No more "arm the shot" toggle - an Archer drop is a shoot exactly
     // when the target is one of its knight's-move capture squares, and a
     // relocate otherwise (tryOptimisticFen/the server independently reject
-    // anything that's neither).
-    const shoot = sourceSquare === myArcherSquare && isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
+    // anything that's neither). A Mirror currently mimicking an Archer gets
+    // the exact same treatment on its own square - isArcherShootMove is
+    // purely geometric (knight's-move-away, enemy-occupied), so it works
+    // unchanged for either square.
+    const isMirrorArcherMove = myMirrorSquares.includes(sourceSquare) && mirrorMimicType === "n" && mirrorMimicIsArcher;
+    const shoot =
+      (sourceSquare === myArcherSquare || isMirrorArcherMove) &&
+      isArcherShootMove(gameState.fen, sourceSquare, targetSquare);
 
     // Show my own move immediately rather than waiting on the round trip -
     // see tryOptimisticFen's own comment for exactly which moves this
@@ -255,6 +265,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       isMirrorSquare: myMirrorSquares.includes(sourceSquare),
       mirrorMimicType,
       mirrorMimicIsHydra,
+      mirrorMimicIsArcher,
       ownPopeSquare: myPopeSquare,
       shoot,
     });

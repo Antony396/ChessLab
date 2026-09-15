@@ -17,6 +17,15 @@ class CustomSetupRequest(BaseModel):
     # each evolution slot only ever produces one hero.
     white_evolved_squares: list[str] = []
     vs_ai: bool = True
+    # Only meaningful for /online/create - links the created room/game to
+    # the creator's account (see online_game_routes.py's online_create) so
+    # a real win/loss/draw can update ELO. None for every other use of this
+    # same request shape (custom-setup's vs_ai/local-sandbox modes never
+    # rate anyone), and even for online/create itself if the caller somehow
+    # isn't authenticated - a game with an unlinked side just never gets
+    # rated, same as any other online_create request wouldn't be if the
+    # opponent's own side never linked either.
+    auth_token: Optional[str] = None
 
 
 class EvolutionSnapshot(BaseModel):
@@ -91,6 +100,12 @@ class CustomGameState(BaseModel):
     # too, mirroring the backend's _mirror_current_mimic_is_hydra.
     white_last_moved_was_hydra: bool = False
     black_last_moved_was_hydra: bool = False
+    # Same idea, for an Archer instead of a Hydra - mirrors the backend's
+    # _mirror_current_mimic_is_archer, letting the frontend's Mirror
+    # legal-move-hint logic know to show the Archer's own king-step-relocate/
+    # knight-shape-shoot destinations instead of a plain Knight's.
+    white_last_moved_was_archer: bool = False
+    black_last_moved_was_archer: bool = False
     # True when whoever's turn it currently is (see `turn` above) is in
     # check right now - the same true-check computation _compute_status
     # uses for checkmate, so this correctly accounts for a hero piece's
@@ -125,6 +140,9 @@ class OnlineRoomCreateResponse(BaseModel):
 class OnlineRoomJoinRequest(BaseModel):
     black_back_rank: dict[str, str]
     black_evolved_squares: list[str] = []
+    # Links the joiner's side of the built game to their account, same idea
+    # as CustomSetupRequest.auth_token above.
+    auth_token: Optional[str] = None
 
 
 class OnlineJoinResponse(CustomGameState):

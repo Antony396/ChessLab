@@ -185,6 +185,66 @@ def execute_archer_shoot(board: chess.Board, move: chess.Move) -> None:
     board.turn = not board.turn
 
 
+def execute_mirror_archer_move(board: chess.Board, move: chess.Move) -> None:
+    """A Mirror mimicking an Archer's relocate - identical rules to
+    execute_archer_move (a king-step onto an empty square, move-only, never
+    a capture), just validated against the Mirror's own Bishop storage
+    instead of the Archer's Knight storage. See execute_mirror_move's own
+    docstring for why this needs to be a separate function rather than
+    another branch inside it: an Archer's relocate and shoot are two
+    completely different move shapes, not "Knight plus some extra
+    squares" the way a Hydra's ring is - there's no single geometry check
+    that covers both, so each gets its own function exactly like the real
+    Archer does."""
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.BISHOP:
+        raise IllegalMoveError("That square doesn't hold a Mirror")
+    if not is_king_step(move.from_square, move.to_square):
+        raise IllegalMoveError("That is not a legal Mirror move")
+
+    target = board.piece_at(move.to_square)
+    if target is not None:
+        raise IllegalMoveError("That is not a legal Mirror move")
+
+    scratch = board.copy(stack=False)
+    scratch.remove_piece_at(move.from_square)
+    scratch.set_piece_at(move.to_square, piece)
+    if leaves_own_king_in_check(scratch, piece.color):
+        raise IllegalMoveError("That move would leave your king in check")
+
+    board.push(move)
+
+
+def execute_mirror_archer_shoot(board: chess.Board, move: chess.Move) -> None:
+    """A Mirror mimicking an Archer's shoot - identical rules to
+    execute_archer_shoot (a knight's-move-away non-relocating capture, never
+    the enemy King), just validated against the Mirror's own Bishop storage.
+    See execute_mirror_archer_move's docstring for why this is separate."""
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.BISHOP:
+        raise IllegalMoveError("That square doesn't hold a Mirror")
+    if not is_knight_shape(move.from_square, move.to_square):
+        raise IllegalMoveError("That is not a legal Mirror shot")
+
+    target = board.piece_at(move.to_square)
+    if target is None or target.color == piece.color:
+        raise IllegalMoveError("That is not a legal Mirror shot")
+    if target.piece_type == chess.KING:
+        raise IllegalMoveError("The Mirror cannot shoot the enemy King")
+
+    scratch = board.copy(stack=False)
+    scratch.remove_piece_at(move.to_square)
+    if leaves_own_king_in_check(scratch, piece.color):
+        raise IllegalMoveError("That shot would leave your king in check")
+
+    board.remove_piece_at(move.to_square)
+    board.ep_square = None
+    board.halfmove_clock = 0
+    if piece.color == chess.BLACK:
+        board.fullmove_number += 1
+    board.turn = not board.turn
+
+
 def execute_hydra_move(board: chess.Board, move: chess.Move) -> None:
     """A Hydra jumps to any square at Chebyshev distance exactly 2 - a
     knight's-L shape, straight two squares, or diagonal two squares - the

@@ -54,6 +54,19 @@ class CustomGame:
     # mimic_is_hydra parameter).
     white_last_moved_was_hydra: bool = False
     black_last_moved_was_hydra: bool = False
+    # Same idea as white_last_moved_was_hydra/black_last_moved_was_hydra
+    # above, for an Archer instead of a Hydra: an Archer's relocate (a
+    # king-step) and shoot (a knight-shape non-relocating capture) are BOTH
+    # recorded under last_moved_type == KNIGHT (its storage type), same as a
+    # plain Knight or a Hydra - without this flag a Mirror had no way to
+    # tell the three apart, so it fell through to trying a real Knight's
+    # L-shaped legal_moves check, which a king-step relocate always fails
+    # (rejecting a move that should be legal) and a knight-shape shoot only
+    # passes by coincidence while getting the wrong semantics (relocating
+    # onto the square instead of shooting it from afar). See
+    # execute_mirror_archer_move/execute_mirror_archer_shoot.
+    white_last_moved_was_archer: bool = False
+    black_last_moved_was_archer: bool = False
     vs_ai: bool = False
     status: str = "in_progress"
     action_log: list[str] = field(default_factory=list)
@@ -79,6 +92,14 @@ class CustomGame:
     # state to track here at all.
     white_token: Optional[str] = None
     black_token: Optional[str] = None
+    # Account ids for each side, when known - only ever set for a genuinely
+    # authenticated online game (the plain shareable-link flow and the
+    # friend-challenge flow both thread these through at creation time; an
+    # unauthenticated caller or a vs_ai/local-sandbox game leaves them None).
+    # This is the sole source of truth online_move reads before applying an
+    # ELO update on game end - a game missing either id never gets rated.
+    white_user_id: Optional[str] = None
+    black_user_id: Optional[str] = None
 
 
 @dataclass
@@ -93,6 +114,10 @@ class PendingRoom:
     white_evolved_squares: list[str]
     white_token: str
     game_id: Optional[str] = None
+    # The creator's account id, if they were authenticated when they
+    # created this room - carried over onto the built CustomGame (see
+    # online_game_routes.py's online_room_join) so ELO can apply later.
+    white_user_id: Optional[str] = None
 
 
 @dataclass
@@ -112,8 +137,15 @@ class SimulRoom:
     # Whoever sent the challenge (always White here) - needed purely so
     # accepting/declining can notify THEM specifically over their presence
     # connection, since the accept/decline request only ever carries the
-    # recipient's own token, not the challenger's identity.
+    # recipient's own token, not the challenger's identity. Also doubles as
+    # White's account id for ELO purposes once the game is built - a
+    # challenge always comes from a real logged-in account, unlike
+    # PendingRoom.white_user_id which is only sometimes known.
     challenger_id: str
+    # The challenged friend's account id - known from the start here (the
+    # challenge names them directly), unlike PendingRoom's black side which
+    # only shows up once someone actually opens the join link.
+    black_user_id: Optional[str] = None
     white_back_rank: Optional[dict[str, str]] = None
     white_evolved_squares: Optional[list[str]] = None
     black_back_rank: Optional[dict[str, str]] = None
@@ -210,8 +242,16 @@ def get_room(room_id: str) -> Optional[PendingRoom]:
     return _ROOMS.get(room_id)
 
 
-def create_simul_room(white_token: str, black_token: str, challenger_id: str) -> SimulRoom:
-    room = SimulRoom(id=uuid.uuid4().hex, white_token=white_token, black_token=black_token, challenger_id=challenger_id)
+def create_simul_room(
+    white_token: str, black_token: str, challenger_id: str, black_user_id: Optional[str] = None
+) -> SimulRoom:
+    room = SimulRoom(
+        id=uuid.uuid4().hex,
+        white_token=white_token,
+        black_token=black_token,
+        challenger_id=challenger_id,
+        black_user_id=black_user_id,
+    )
     _SIMUL_ROOMS[room.id] = room
     return room
 

@@ -168,6 +168,7 @@ export function tryOptimisticFen(
     isMirrorSquare,
     mirrorMimicType,
     mirrorMimicIsHydra,
+    mirrorMimicIsArcher,
     ownPopeSquare,
     shoot,
   } = {}
@@ -211,7 +212,15 @@ export function tryOptimisticFen(
     }
     return null;
   }
-  if (
+  if (isMirrorSquare && mirrorMimicType === "n" && mirrorMimicIsArcher) {
+    // An Archer's relocate is move-only (never a capture) - shoot is
+    // already handled by the `if (shoot)` early-return above, since
+    // isArcherShootMove is purely geometric and works for a Mirror's own
+    // square exactly like it does for a real Archer's.
+    if (archerRelocateDestinations(chess, from).includes(to)) {
+      return applyRelocateAndCapture(fen, from, to);
+    }
+  } else if (
     isMirrorSquare &&
     mirrorMimicType &&
     mirrorMimicDestinations(chess, from, mirrorMimicType, mirrorMimicIsHydra).includes(to)
@@ -408,6 +417,7 @@ export function computeLegalDestinations({
   isMirrorSquare,
   mirrorMimicType, // one of "q"/"r"/"b"/"n"/"p"/"k", or null/undefined if nothing to mimic yet
   mirrorMimicIsHydra,
+  mirrorMimicIsArcher,
   ownPopeSquare, // this piece's own side's Pope square, for the aura's boosted-Pawn destinations
 }) {
   let chess;
@@ -457,6 +467,17 @@ export function computeLegalDestinations({
 
   if (isMirrorSquare) {
     if (!mirrorMimicType) return [];
+    if (mirrorMimicType === "n" && mirrorMimicIsArcher) {
+      // Same dual-mode shape as the real Archer branch above - a Mirror
+      // currently mimicking an Archer shows both the move-only relocate
+      // dots and the knight's-move shoot rings at once.
+      const moveDestinations = archerRelocateDestinations(chess, square);
+      const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true });
+      return [
+        ...moveDestinations.map((to) => ({ square: to, capture: false, shoot: false })),
+        ...shootDestinations.map((to) => ({ square: to, capture: true, shoot: true })),
+      ];
+    }
     const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra);
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
