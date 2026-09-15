@@ -13,3 +13,9 @@ services:
         sync: false
       - key: CHESS_EVAL_CONTACT_EMAIL
         sync: false
+      # Neon Postgres connection string (production branch) - accounts,
+      # friendships, and saved decks live here now instead of the
+      # container's own ephemeral disk. Get it via `neon connection-string
+      # production` or the Neon console; never commit the real value.
+      - key: DATABASE_URL
+        sync: false

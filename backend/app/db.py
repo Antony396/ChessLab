@@ -1,42 +1,62 @@
-"""Local SQLite cache: HTTP ETag cache, fetched games, analysis results, and
-(persistent, unlike everything in custom_chess/store.py) user accounts and
-friendships.
+"""Postgres (Neon) persistence: HTTP ETag cache, fetched games, analysis
+results, and user accounts/friendships/saved decks - all of it durable across
+a deploy, unlike everything in custom_chess/store.py (and unlike this file's
+own previous life as a local SQLite file, which didn't survive a Render
+redeploy since the container filesystem is ephemeral there).
 
 One connection per thread (FastAPI's sync route handlers run in a thread
-pool), each opened lazily and reused for the life of that thread.
+pool), each opened lazily and reused for the life of that thread. Neon's
+compute auto-suspends after a period of inactivity, which silently breaks a
+long-idle thread's held connection - get_conn() below pings before handing
+one back and transparently reconnects if it's gone.
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
-from app.config import DB_PATH
+import psycopg
+from psycopg.rows import dict_row
+
+from app.config import DATABASE_URL
 from app.models.analysis import GameAnalysis
 from app.models.game import Game
 
 _local = threading.local()
 
 
-def _connect() -> sqlite3.Connection:
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+def _connect() -> psycopg.Connection:
+    # prepare_threshold=None disables psycopg's automatic server-side
+    # prepared statements - harmless on their own, but Neon's pooled
+    # connection string can transparently swap which real Postgres backend
+    # session a connection is attached to between transactions, and a
+    # statement prepared against one backend session doesn't exist on
+    # another. Without this, a query repeated enough times to cross
+    # psycopg's default prepare threshold could start intermittently failing
+    # with "prepared statement does not exist" under real traffic.
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None)
+
+
+def get_conn() -> psycopg.Connection:
+    conn = getattr(_local, "conn", None)
+    if conn is not None and not conn.closed:
+        try:
+            conn.execute("SELECT 1")
+        except psycopg.Error:
+            conn.close()
+            conn = None
+    if conn is None:
+        conn = _connect()
+        _local.conn = conn
     return conn
 
 
-def get_conn() -> sqlite3.Connection:
-    if not hasattr(_local, "conn"):
-        _local.conn = _connect()
-    return _local.conn
-
-
 def init_db() -> None:
-    get_conn().executescript(
+    conn = get_conn()
+    conn.execute(
         """
         CREATE TABLE IF NOT EXISTS http_cache (
             cache_key TEXT PRIMARY KEY,
@@ -85,7 +105,7 @@ def init_db() -> None:
         );
         """
     )
-    get_conn().commit()
+    conn.commit()
 
 
 # --- HTTP cache (ETag) ---
@@ -93,7 +113,7 @@ def init_db() -> None:
 
 def get_cached_response(cache_key: str) -> dict | None:
     row = get_conn().execute(
-        "SELECT etag, body FROM http_cache WHERE cache_key = ?", (cache_key,)
+        "SELECT etag, body FROM http_cache WHERE cache_key = %s", (cache_key,)
     ).fetchone()
     return dict(row) if row else None
 
@@ -101,7 +121,7 @@ def get_cached_response(cache_key: str) -> dict | None:
 def set_cached_response(cache_key: str, etag: str | None, body: str) -> None:
     conn = get_conn()
     conn.execute(
-        "INSERT INTO http_cache (cache_key, etag, body, fetched_at) VALUES (?, ?, ?, ?) "
+        "INSERT INTO http_cache (cache_key, etag, body, fetched_at) VALUES (%s, %s, %s, %s) "
         "ON CONFLICT(cache_key) DO UPDATE SET "
         "etag=excluded.etag, body=excluded.body, fetched_at=excluded.fetched_at",
         (cache_key, etag, body, datetime.now(timezone.utc).isoformat()),
@@ -116,7 +136,7 @@ def save_game(game: Game, queried_username: str) -> None:
     conn = get_conn()
     conn.execute(
         "INSERT INTO games (id, platform, queried_username, data_json, end_time) "
-        "VALUES (?, ?, ?, ?, ?) "
+        "VALUES (%s, %s, %s, %s, %s) "
         "ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, end_time=excluded.end_time",
         (game.id, game.platform, queried_username.lower(), game.model_dump_json(), game.end_time),
     )
@@ -124,13 +144,13 @@ def save_game(game: Game, queried_username: str) -> None:
 
 
 def get_game(game_id: str) -> Game | None:
-    row = get_conn().execute("SELECT data_json FROM games WHERE id = ?", (game_id,)).fetchone()
+    row = get_conn().execute("SELECT data_json FROM games WHERE id = %s", (game_id,)).fetchone()
     return Game.model_validate_json(row["data_json"]) if row else None
 
 
 def list_games(platform: str, username: str) -> list[Game]:
     rows = get_conn().execute(
-        "SELECT data_json FROM games WHERE platform = ? AND queried_username = ? "
+        "SELECT data_json FROM games WHERE platform = %s AND queried_username = %s "
         "ORDER BY end_time DESC",
         (platform, username.lower()),
     ).fetchall()
@@ -142,7 +162,7 @@ def list_games(platform: str, username: str) -> list[Game]:
 
 def get_cached_analysis(game_id: str, depth: int) -> GameAnalysis | None:
     row = get_conn().execute(
-        "SELECT analysis_json FROM analysis_cache WHERE game_id = ? AND depth = ?",
+        "SELECT analysis_json FROM analysis_cache WHERE game_id = %s AND depth = %s",
         (game_id, depth),
     ).fetchone()
     return GameAnalysis.model_validate_json(row["analysis_json"]) if row else None
@@ -152,7 +172,7 @@ def save_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
     conn = get_conn()
     conn.execute(
         "INSERT INTO analysis_cache (game_id, depth, analysis_json, generated_at) "
-        "VALUES (?, ?, ?, ?) "
+        "VALUES (%s, %s, %s, %s) "
         "ON CONFLICT(game_id, depth) DO UPDATE SET "
         "analysis_json=excluded.analysis_json, generated_at=excluded.generated_at",
         (game_id, depth, analysis.model_dump_json(), analysis.generated_at),
@@ -174,29 +194,30 @@ def create_user(username: str, password_hash: str, password_salt: str) -> dict:
     try:
         conn.execute(
             "INSERT INTO users (id, username, username_lower, password_hash, password_salt, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (user_id, username, username.lower(), password_hash, password_salt, created_at),
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
         raise UsernameTakenError(username)
     return {"id": user_id, "username": username, "created_at": created_at}
 
 
-def get_user_by_username(username: str) -> sqlite3.Row | None:
+def get_user_by_username(username: str) -> dict | None:
     return get_conn().execute(
-        "SELECT * FROM users WHERE username_lower = ?", (username.lower(),)
+        "SELECT * FROM users WHERE username_lower = %s", (username.lower(),)
     ).fetchone()
 
 
-def get_user_by_id(user_id: str) -> sqlite3.Row | None:
-    return get_conn().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+def get_user_by_id(user_id: str) -> dict | None:
+    return get_conn().execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
 
 
-def search_users(query: str, exclude_user_id: str, limit: int = 10) -> list[sqlite3.Row]:
+def search_users(query: str, exclude_user_id: str, limit: int = 10) -> list[dict]:
     return get_conn().execute(
-        "SELECT id, username FROM users WHERE username_lower LIKE ? AND id != ? "
-        "ORDER BY username_lower LIMIT ?",
+        "SELECT id, username FROM users WHERE username_lower LIKE %s AND id != %s "
+        "ORDER BY username_lower LIMIT %s",
         (f"{query.lower()}%", exclude_user_id, limit),
     ).fetchall()
 
@@ -217,53 +238,54 @@ def create_friend_request(from_user_id: str, to_user_id: str) -> str:
     try:
         conn.execute(
             "INSERT INTO friend_requests (id, from_user_id, to_user_id, status, created_at) "
-            "VALUES (?, ?, ?, 'pending', ?)",
+            "VALUES (%s, %s, %s, 'pending', %s)",
             (request_id, from_user_id, to_user_id, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
         raise FriendRequestExistsError((from_user_id, to_user_id))
     return request_id
 
 
-def get_friend_request(request_id: str) -> sqlite3.Row | None:
-    return get_conn().execute("SELECT * FROM friend_requests WHERE id = ?", (request_id,)).fetchone()
+def get_friend_request(request_id: str) -> dict | None:
+    return get_conn().execute("SELECT * FROM friend_requests WHERE id = %s", (request_id,)).fetchone()
 
 
-def get_friend_request_between(user_a: str, user_b: str) -> sqlite3.Row | None:
+def get_friend_request_between(user_a: str, user_b: str) -> dict | None:
     return get_conn().execute(
         "SELECT * FROM friend_requests WHERE "
-        "(from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
+        "(from_user_id = %s AND to_user_id = %s) OR (from_user_id = %s AND to_user_id = %s)",
         (user_a, user_b, user_b, user_a),
     ).fetchone()
 
 
 def set_friend_request_status(request_id: str, status: str) -> None:
     conn = get_conn()
-    conn.execute("UPDATE friend_requests SET status = ? WHERE id = ?", (status, request_id))
+    conn.execute("UPDATE friend_requests SET status = %s WHERE id = %s", (status, request_id))
     conn.commit()
 
 
 def delete_friend_request(request_id: str) -> None:
     conn = get_conn()
-    conn.execute("DELETE FROM friend_requests WHERE id = ?", (request_id,))
+    conn.execute("DELETE FROM friend_requests WHERE id = %s", (request_id,))
     conn.commit()
 
 
-def list_incoming_requests(user_id: str) -> list[sqlite3.Row]:
+def list_incoming_requests(user_id: str) -> list[dict]:
     return get_conn().execute(
         "SELECT fr.id, fr.created_at, u.id AS from_user_id, u.username AS from_username "
         "FROM friend_requests fr JOIN users u ON u.id = fr.from_user_id "
-        "WHERE fr.to_user_id = ? AND fr.status = 'pending' ORDER BY fr.created_at",
+        "WHERE fr.to_user_id = %s AND fr.status = 'pending' ORDER BY fr.created_at",
         (user_id,),
     ).fetchall()
 
 
-def list_friends(user_id: str) -> list[sqlite3.Row]:
+def list_friends(user_id: str) -> list[dict]:
     return get_conn().execute(
         "SELECT u.id, u.username FROM friend_requests fr "
-        "JOIN users u ON u.id = (CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END) "
-        "WHERE fr.status = 'accepted' AND (fr.from_user_id = ? OR fr.to_user_id = ?) "
+        "JOIN users u ON u.id = (CASE WHEN fr.from_user_id = %s THEN fr.to_user_id ELSE fr.from_user_id END) "
+        "WHERE fr.status = 'accepted' AND (fr.from_user_id = %s OR fr.to_user_id = %s) "
         "ORDER BY u.username_lower",
         (user_id, user_id, user_id),
     ).fetchall()
@@ -272,7 +294,7 @@ def list_friends(user_id: str) -> list[sqlite3.Row]:
 def are_friends(user_a: str, user_b: str) -> bool:
     row = get_conn().execute(
         "SELECT 1 FROM friend_requests WHERE status = 'accepted' AND "
-        "((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))",
+        "((from_user_id = %s AND to_user_id = %s) OR (from_user_id = %s AND to_user_id = %s))",
         (user_a, user_b, user_b, user_a),
     ).fetchone()
     return row is not None
@@ -291,7 +313,7 @@ def save_deck(user_id: str, slot: int, name: str, deck: list, evolved_indices: l
     conn = get_conn()
     conn.execute(
         "INSERT INTO saved_decks (user_id, slot, name, deck_json, evolved_indices_json, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "VALUES (%s, %s, %s, %s, %s, %s) "
         "ON CONFLICT(user_id, slot) DO UPDATE SET "
         "name=excluded.name, deck_json=excluded.deck_json, evolved_indices_json=excluded.evolved_indices_json, "
         "updated_at=excluded.updated_at",
@@ -302,7 +324,7 @@ def save_deck(user_id: str, slot: int, name: str, deck: list, evolved_indices: l
 
 def list_saved_decks(user_id: str) -> list[dict]:
     rows = get_conn().execute(
-        "SELECT slot, name, deck_json, evolved_indices_json FROM saved_decks WHERE user_id = ? ORDER BY slot",
+        "SELECT slot, name, deck_json, evolved_indices_json FROM saved_decks WHERE user_id = %s ORDER BY slot",
         (user_id,),
     ).fetchall()
     return [
@@ -318,5 +340,5 @@ def list_saved_decks(user_id: str) -> list[dict]:
 
 def delete_saved_deck(user_id: str, slot: int) -> None:
     conn = get_conn()
-    conn.execute("DELETE FROM saved_decks WHERE user_id = ? AND slot = ?", (user_id, slot))
+    conn.execute("DELETE FROM saved_decks WHERE user_id = %s AND slot = %s", (user_id, slot))
     conn.commit()

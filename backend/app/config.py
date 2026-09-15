@@ -2,9 +2,17 @@ import os
 import shutil
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-DB_PATH = os.environ.get("CHESS_EVAL_DB_PATH", str(DATA_DIR / "chess_eval.db"))
+
+# `neon link` (see repo root .neon/.env.local) writes the dev connection
+# string one directory up from here, at the repo root - not loaded at all in
+# production, where Render injects DATABASE_URL directly as a real env var.
+# Doesn't override an already-set DATABASE_URL, so a real env var always wins.
+load_dotenv(BASE_DIR.parent / ".env.local")
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Populated by the v1 setup (winget install Stockfish.Stockfish). Used only if
 # "stockfish" isn't yet on PATH in the current shell session.

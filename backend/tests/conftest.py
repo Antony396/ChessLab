@@ -1,3 +1,18 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Point the DB layer at the dedicated "testing" Neon branch (a copy-on-write
+# branch of production, isolated from it) BEFORE app.config's module-level
+# DATABASE_URL read happens via the app.main import below - tests writing
+# real accounts into the actual production database, discovered the hard way
+# when a pytest run littered it with rushtest_* rows, is exactly what this
+# prevents. Overrides any DATABASE_URL already in the environment, unlike
+# config.py's own load_dotenv call, since a test run must never silently fall
+# through to the real one.
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env.test", override=True)
+
 import pytest
 from fastapi.testclient import TestClient
 

@@ -17,3 +17,7 @@ frontend/dist/
 /DrakKnightskin.png
 /dragonpeice.png
 /new dark night.jpg
+.neon
+.env.local
+.env.test
+node_modules/

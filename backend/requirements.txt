@@ -3,3 +3,5 @@ uvicorn[standard]>=0.32
 python-chess>=1.999
 requests>=2.32
 pydantic>=2.9
+psycopg[binary]>=3.2
+python-dotenv>=1.0
