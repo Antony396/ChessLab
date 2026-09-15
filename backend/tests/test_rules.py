@@ -5,8 +5,12 @@ from app.custom_chess.rules import (
     IllegalMoveError,
     execute_archer_move,
     execute_archer_shoot,
+    execute_boosted_pawn_move,
+    execute_pope_move,
     execute_standard_move,
-    execute_wizard_move,
+    is_within_pope_aura,
+    pope_boosted_diagonal_capture_squares,
+    pope_boosted_forward_square,
 )
 
 
@@ -23,57 +27,107 @@ def test_standard_move_rejects_illegal_move():
         execute_standard_move(board, chess.Move.from_uci("e2e5"))  # pawns can't jump 3
 
 
-def test_wizard_moves_diagonally_like_a_bishop():
+def test_pope_moves_one_square_like_a_king():
     board = chess.Board(fen="7k/8/8/8/8/8/8/B6K w - - 0 1")
-    execute_wizard_move(board, chess.Move.from_uci("a1d4"))
-    assert board.piece_at(chess.D4) == chess.Piece(chess.BISHOP, chess.WHITE)
-    assert board.piece_at(chess.A1) is None
-
-
-def test_wizard_moves_one_square_like_a_king():
-    board = chess.Board(fen="7k/8/8/8/8/8/8/B6K w - - 0 1")
-    execute_wizard_move(board, chess.Move.from_uci("a1a2"))  # not a bishop move at all
+    execute_pope_move(board, chess.Move.from_uci("a1a2"))
     assert board.piece_at(chess.A2) == chess.Piece(chess.BISHOP, chess.WHITE)
     assert board.piece_at(chess.A1) is None
 
 
-def test_wizard_king_step_can_capture_an_enemy_piece():
-    # b2-b3 is straight, not diagonal - only reachable via the king-step
-    # mode, so this actually exercises the added capture path (a1-b2 in the
-    # test above would double as a legal bishop move and not prove anything
-    # new).
+def test_pope_rejects_bishop_line_move():
+    # Unlike the old Wizard this replaces, a Pope has NO diagonal-line
+    # movement at all - only a king-step, even though it's stored as a
+    # Bishop and a1-d4 would be a perfectly legal Bishop move.
+    board = chess.Board(fen="7k/8/8/8/8/8/8/B6K w - - 0 1")
+    with pytest.raises(IllegalMoveError):
+        execute_pope_move(board, chess.Move.from_uci("a1d4"))
+
+
+def test_pope_king_step_can_capture_an_enemy_piece():
     board = chess.Board(fen="7k/8/8/8/8/1p6/1B6/7K w - - 0 1")
-    execute_wizard_move(board, chess.Move.from_uci("b2b3"))
+    execute_pope_move(board, chess.Move.from_uci("b2b3"))
     assert board.piece_at(chess.B3) == chess.Piece(chess.BISHOP, chess.WHITE)
 
 
-def test_wizard_rejects_king_step_onto_own_piece():
+def test_pope_rejects_king_step_onto_own_piece():
     board = chess.Board(fen="7k/8/8/8/8/8/1P6/B6K w - - 0 1")
     with pytest.raises(IllegalMoveError):
-        execute_wizard_move(board, chess.Move.from_uci("a1b2"))
+        execute_pope_move(board, chess.Move.from_uci("a1b2"))
 
 
-def test_wizard_rejects_move_that_is_neither_bishop_nor_king_shaped():
+def test_pope_rejects_move_more_than_one_square():
     board = chess.Board(fen="7k/8/8/8/8/8/8/B6K w - - 0 1")
     with pytest.raises(IllegalMoveError):
-        execute_wizard_move(board, chess.Move.from_uci("a1a5"))  # straight line, not diagonal or king-step
+        execute_pope_move(board, chess.Move.from_uci("a1a5"))
 
 
-def test_wizard_rejects_king_step_that_exposes_own_king():
-    # King a1, Wizard a2, pinned by a black rook on a8 along the a-file.
+def test_pope_rejects_king_step_that_exposes_own_king():
+    # King a1, Pope a2, pinned by a black rook on a8 along the a-file.
     board = chess.Board(fen="r6k/8/8/8/8/8/B7/K7 w - - 0 1")
     with pytest.raises(IllegalMoveError):
-        execute_wizard_move(board, chess.Move.from_uci("a2b2"))  # king-step off the pin file
-    # Staying on the pin file (a diagonal bishop move isn't available from
-    # a2 along the a-file, but a king-step straight up the file is fine).
-    execute_wizard_move(board, chess.Move.from_uci("a2a3"))
+        execute_pope_move(board, chess.Move.from_uci("a2b2"))  # king-step off the pin file
+    # Staying on the pin file is fine.
+    execute_pope_move(board, chess.Move.from_uci("a2a3"))
     assert board.piece_at(chess.A3) == chess.Piece(chess.BISHOP, chess.WHITE)
 
 
-def test_wizard_rejects_non_bishop_piece():
+def test_pope_rejects_non_bishop_piece():
     board = chess.Board()
-    with pytest.raises(IllegalMoveError, match="doesn't hold a Wizard"):
-        execute_wizard_move(board, chess.Move.from_uci("e2e4"))
+    with pytest.raises(IllegalMoveError, match="doesn't hold a Pope"):
+        execute_pope_move(board, chess.Move.from_uci("e2e4"))
+
+
+def test_is_within_pope_aura_covers_chebyshev_distance_one():
+    pope_square = chess.D4
+    assert is_within_pope_aura(pope_square, chess.D4) is True  # the Pope's own square
+    assert is_within_pope_aura(pope_square, chess.E5) is True  # diagonal neighbor
+    assert is_within_pope_aura(pope_square, chess.D6) is False  # two squares away
+    assert is_within_pope_aura(None, chess.E5) is False
+
+
+def test_boosted_pawn_can_push_two_from_a_non_starting_rank():
+    # White Pawn on d3 (already past its own starting rank), Pope adjacent
+    # on e3 (beside it, not blocking the forward path) - the aura should
+    # let it push all the way to d5.
+    board = chess.Board(fen="7k/8/8/8/8/3PB3/8/7K w - - 0 1")
+    execute_boosted_pawn_move(board, chess.Move.from_uci("d3d5"), pope_square=chess.E3)
+    assert board.piece_at(chess.D5) == chess.Piece(chess.PAWN, chess.WHITE)
+    assert board.piece_at(chess.D3) is None
+
+
+def test_boosted_pawn_forward_push_needs_a_clear_path():
+    board = chess.Board(fen="7k/8/8/3p4/8/3PB3/8/7K w - - 0 1")
+    with pytest.raises(IllegalMoveError):
+        execute_boosted_pawn_move(board, chess.Move.from_uci("d3d5"), pope_square=chess.E3)
+
+
+def test_boosted_pawn_can_capture_two_squares_diagonally_either_direction():
+    # b5/f5 are the two real diagonal-2 squares from d3 (see
+    # test_pope_boosted_forward_square_and_diagonal_squares_geometry).
+    board = chess.Board(fen="7k/8/8/1p3p2/8/3PB3/8/7K w - - 0 1")
+    execute_boosted_pawn_move(board, chess.Move.from_uci("d3b5"), pope_square=chess.E3)
+    assert board.piece_at(chess.B5) == chess.Piece(chess.PAWN, chess.WHITE)
+    assert board.piece_at(chess.D3) is None
+
+
+def test_boosted_pawn_capture_cannot_target_the_enemy_king():
+    board = chess.Board(fen="8/8/8/1k6/8/3PB3/8/7K w - - 0 1")
+    with pytest.raises(IllegalMoveError, match="cannot capture the enemy King"):
+        execute_boosted_pawn_move(board, chess.Move.from_uci("d3b5"), pope_square=chess.E3)
+
+
+def test_boosted_pawn_move_rejected_when_pawn_is_outside_the_aura():
+    # Same shape as the successful push test, but the Pope is now two
+    # squares away - out of aura range.
+    board = chess.Board(fen="7k/8/8/4B3/8/3P4/8/7K w - - 0 1")
+    with pytest.raises(IllegalMoveError):
+        execute_boosted_pawn_move(board, chess.Move.from_uci("d3d5"), pope_square=chess.E5)
+
+
+def test_pope_boosted_forward_square_and_diagonal_squares_geometry():
+    assert pope_boosted_forward_square(chess.D3, chess.WHITE) == chess.D5
+    assert pope_boosted_forward_square(chess.D3, chess.BLACK) == chess.D1
+    assert set(pope_boosted_diagonal_capture_squares(chess.D3, chess.WHITE)) == {chess.B5, chess.F5}
 
 
 def test_archer_relocates_one_square_any_direction():

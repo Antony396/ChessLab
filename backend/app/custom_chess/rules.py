@@ -1,6 +1,6 @@
 """Move execution for custom games: standard moves still go through
-python-chess's own legality checking untouched; the evolved pieces
-(Dragon, Wizard, Archer) each bypass it for their non-standard movement
+python-chess's own legality checking untouched; the hero pieces (Dragon,
+Pope, Archer, and the rest) each bypass it for their non-standard movement
 mode(s), since python-chess only ever validates moves for the real piece
 type they're stored as.
 """
@@ -88,25 +88,23 @@ def execute_dragon_move(board: chess.Board, move: chess.Move) -> None:
     board.push(move)
 
 
-def execute_wizard_move(board: chess.Board, move: chess.Move) -> None:
-    """A Wizard (an evolved Bishop) permanently moves like a Bishop OR one
-    step like a King. Stored as a Bishop, so diagonal travel is just
-    python-chess's own legality check. The king-step mode can't reuse the
-    Dragon's "temporarily relabel and ask legal_moves" trick, though: relabeling
-    as an actual King would put two kings on the board at once, corrupting
-    python-chess's own check detection. Instead this simulates the king-step
-    on a scratch copy and asks is_attacked_by directly.
+def execute_pope_move(board: chess.Board, move: chess.Move) -> None:
+    """A Pope (an evolved Bishop) moves exactly one square in any direction,
+    like a King - no diagonal-line travel at all (unlike the old Wizard this
+    replaces). Stored as a Bishop, an arbitrary placeholder never relied on
+    directly (same idea as the Mirror). Can't reuse the Dragon's "temporarily
+    relabel and ask legal_moves" trick: relabeling as an actual King would put
+    two kings on the board at once, corrupting python-chess's own check
+    detection. Instead this simulates the king-step on a scratch copy and
+    asks is_attacked_by directly - see custom_game_routes.py for the Pope's
+    other half, the aura that lets nearby Pawns move further.
     """
     piece = board.piece_at(move.from_square)
     if piece is None or piece.piece_type != chess.BISHOP:
-        raise IllegalMoveError("That square doesn't hold a Wizard")
-
-    if move in board.legal_moves:
-        board.push(move)
-        return
+        raise IllegalMoveError("That square doesn't hold a Pope")
 
     if not is_king_step(move.from_square, move.to_square):
-        raise IllegalMoveError("That is not a legal Wizard move")
+        raise IllegalMoveError("That is not a legal Pope move")
 
     target = board.piece_at(move.to_square)
     if target is not None and target.color == piece.color:
@@ -195,7 +193,7 @@ def execute_hydra_move(board: chess.Board, move: chess.Move) -> None:
     Wizard/Archer/Hydra's own earlier design). Stored as a Knight, so the
     knight-shaped third of that ring is just python-chess's own legality
     check for free (pins, checks, and all); the other two thirds
-    (straight-two and diagonal-two) need the Wizard's scratch-board
+    (straight-two and diagonal-two) need the Pope's scratch-board
     technique instead, since neither matches any real piece's native
     movement.
     """
@@ -297,7 +295,7 @@ def execute_mirror_move(
     uses between Rook and Knight (safe since none of Queen/Rook/Bishop/
     Knight/Pawn need to stay unique on the board); King mimicry can't reuse
     that trick (a second King would corrupt python-chess's own check
-    detection) so it's validated with the Wizard's scratch-board technique
+    detection) so it's validated with the Pope's scratch-board technique
     instead.
 
     mimic_is_hydra additionally flags "the Knight being mimicked was
@@ -363,3 +361,107 @@ def execute_mirror_move(
     # actually applying the move so the Bishop just relocates, exactly like
     # every other mimicked type.
     board.push(chess.Move(move.from_square, move.to_square) if move.promotion else move)
+
+
+# --- Pope aura: nearby Pawns move further -----------------------------
+#
+# The Pope's other half (see execute_pope_move above): any of its own
+# side's plain Pawns (never a Cyclops - that's a distinct hero identity
+# with its own special move already) within one square of an allied Pope
+# can push two squares forward from ANYWHERE, not just their own starting
+# rank, and can capture two squares diagonally forward in EITHER direction
+# (a jump, like the Cyclops's own special hop - never the enemy King, so
+# checkmate stays the only way to win). Unlike every other hero piece,
+# this isn't a fixed identity tracked by its own square set - it's a live,
+# position-dependent effect any ordinary Pawn can have or lose purely by
+# walking in and out of an allied Pope's radius.
+
+
+def is_within_pope_aura(pope_square: Optional[chess.Square], square: chess.Square) -> bool:
+    if pope_square is None:
+        return False
+    d_file = abs(chess.square_file(pope_square) - chess.square_file(square))
+    d_rank = abs(chess.square_rank(pope_square) - chess.square_rank(square))
+    return max(d_file, d_rank) <= 1
+
+
+def pope_boosted_forward_square(from_square: chess.Square, color: chess.Color) -> Optional[chess.Square]:
+    """Two squares straight ahead, regardless of rank (a normal Pawn only
+    ever gets this from its own starting rank) - still needs the square
+    directly ahead AND this one both empty, same as a normal double-step;
+    this only extends how far, not whether the path must be clear."""
+    file = chess.square_file(from_square)
+    rank = chess.square_rank(from_square) + (2 if color == chess.WHITE else -2)
+    if 0 <= rank <= 7:
+        return chess.square(file, rank)
+    return None
+
+
+def pope_boosted_diagonal_capture_squares(from_square: chess.Square, color: chess.Color) -> list[chess.Square]:
+    """Both two-square diagonal jumps forward - a real Pawn's own diagonal
+    capture only ever reaches one square, and even the Cyclops's extra hop
+    only ever covers its forward-LEFT; this covers both directions."""
+    file = chess.square_file(from_square)
+    rank = chess.square_rank(from_square) + (2 if color == chess.WHITE else -2)
+    squares = []
+    for d_file in (-2, 2):
+        f = file + d_file
+        if 0 <= f <= 7 and 0 <= rank <= 7:
+            squares.append(chess.square(f, rank))
+    return squares
+
+
+def execute_boosted_pawn_move(board: chess.Board, move: chess.Move, pope_square: Optional[chess.Square]) -> None:
+    """A plain Pawn's move, extended by a nearby allied Pope - see the
+    module note above. Tries a normal pseudo-legal Pawn move first (a
+    Pope's aura doesn't take anything away, only adds), so this only ever
+    needs the aura-specific geometry for the genuinely new destinations."""
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.PAWN:
+        raise IllegalMoveError("That square doesn't hold a Pawn")
+
+    if move in board.legal_moves:
+        board.push(move)
+        return
+
+    if not is_within_pope_aura(pope_square, move.from_square):
+        raise IllegalMoveError("That is not a legal Pawn move")
+
+    color = piece.color
+    is_capture = False
+    if move.to_square == pope_boosted_forward_square(move.from_square, color):
+        one_ahead_rank = chess.square_rank(move.from_square) + (1 if color == chess.WHITE else -1)
+        one_ahead = chess.square(chess.square_file(move.from_square), one_ahead_rank)
+        if board.piece_at(one_ahead) is not None or board.piece_at(move.to_square) is not None:
+            raise IllegalMoveError("Something is in the way")
+    elif move.to_square in pope_boosted_diagonal_capture_squares(move.from_square, color):
+        target = board.piece_at(move.to_square)
+        if target is None or target.color == color:
+            raise IllegalMoveError("A boosted Pawn must capture an enemy piece with that move")
+        if target.piece_type == chess.KING:
+            raise IllegalMoveError("A Pawn cannot capture the enemy King this way")
+        is_capture = True
+    else:
+        raise IllegalMoveError("That is not a legal Pawn move")
+
+    scratch = board.copy(stack=False)
+    scratch.remove_piece_at(move.from_square)
+    if is_capture:
+        scratch.remove_piece_at(move.to_square)
+    scratch.set_piece_at(move.to_square, piece)
+    if leaves_own_king_in_check(scratch, color):
+        raise IllegalMoveError("That move would leave your king in check")
+
+    landed_piece = piece
+    if move.promotion is not None and chess.square_rank(move.to_square) in (0, 7):
+        landed_piece = chess.Piece(move.promotion, color)
+
+    board.remove_piece_at(move.from_square)
+    if is_capture:
+        board.remove_piece_at(move.to_square)
+    board.set_piece_at(move.to_square, landed_piece)
+    board.ep_square = None
+    board.halfmove_clock = 0
+    if color == chess.BLACK:
+        board.fullmove_number += 1
+    board.turn = not board.turn

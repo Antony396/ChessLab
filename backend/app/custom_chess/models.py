@@ -10,12 +10,11 @@ class CustomSetupRequest(BaseModel):
     # None => auto-filled with the standard back rank (the AI opponent's
     # formation isn't drafted by the player).
     black_back_rank: Optional[dict[str, str]] = None
-    # Squares to evolve at setup: a square holding a Knight becomes a Dragon
-    # (permanent knight+rook movement); a square holding a Bishop becomes a
-    # Wizard (permanent bishop+king-step movement). More than one Bishop
-    # square may be given (the Evo Orb turns a single Bishop into 2
-    # Wizards); only the first Knight square is used, since a Knight's
-    # evolution only ever produces one Dragon.
+    # Squares to evolve at setup: a square holding a Knight becomes an Archer
+    # (permanent king-step relocate + knight-shape shoot); a square holding a
+    # Bishop becomes a Pope (permanent king-step-only movement, plus its
+    # pawn-boosting aura). Only the first square of each type is used, since
+    # each evolution slot only ever produces one hero.
     white_evolved_squares: list[str] = []
     vs_ai: bool = True
 
@@ -30,12 +29,12 @@ class EvolutionSnapshot(BaseModel):
     art (a Dragon/Hydra momentarily looking like a Rook/Knight) - confusing
     right after that piece just did something special."""
 
-    white_dragon_square: Optional[str] = None
-    black_dragon_square: Optional[str] = None
-    white_wizard_squares: list[str] = []
-    black_wizard_squares: list[str] = []
-    white_archer_squares: list[str] = []
-    black_archer_squares: list[str] = []
+    white_dragon_squares: list[str] = []
+    black_dragon_squares: list[str] = []
+    white_pope_square: Optional[str] = None
+    black_pope_square: Optional[str] = None
+    white_archer_square: Optional[str] = None
+    black_archer_square: Optional[str] = None
     white_hydra_squares: list[str] = []
     black_hydra_squares: list[str] = []
     white_cyclops_squares: list[str] = []
@@ -59,19 +58,20 @@ class CustomGameState(BaseModel):
     turn: Literal["white", "black"]
     status: Literal["in_progress", "checkmate", "stalemate", "draw"]
     vs_ai: bool
-    # Current square of each side's Dragon (evolved Knight), or None if never
+    # Current squares of each side's Dragons (there can be several, drafted
+    # directly like the Hydra/Cyclops/Mirror).
+    white_dragon_squares: list[str] = []
+    black_dragon_squares: list[str] = []
+    # Current square of each side's Pope (evolved Bishop), or None if never
     # evolved / captured.
-    white_dragon_square: Optional[str] = None
-    black_dragon_square: Optional[str] = None
-    # Current squares of each side's Wizards (evolved Bishops) - a Bishop
-    # evolution produces 2 at once.
-    white_wizard_squares: list[str] = []
-    black_wizard_squares: list[str] = []
-    # Current squares of each side's Archers (there can be several).
-    white_archer_squares: list[str] = []
-    black_archer_squares: list[str] = []
+    white_pope_square: Optional[str] = None
+    black_pope_square: Optional[str] = None
+    # Current square of each side's Archer (evolved Knight), or None if never
+    # evolved / captured.
+    white_archer_square: Optional[str] = None
+    black_archer_square: Optional[str] = None
     # Current squares of each side's Hydras/Cyclopses/Mirrors (each can have
-    # several, drafted directly like the Archer).
+    # several, drafted directly like the Dragon).
     white_hydra_squares: list[str] = []
     black_hydra_squares: list[str] = []
     white_cyclops_squares: list[str] = []

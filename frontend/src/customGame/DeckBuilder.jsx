@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  DRAGON_COST,
+  ARCHER_COST,
   MAX_DECK_POINTS,
   PALETTE_PIECES,
   PIECE_LABELS,
   POINT_COSTS,
-  WIZARD_COST,
+  POPE_COST,
   pieceImageSrc,
 } from "../pieces/flat2dPieces";
 import { postCustomSetup, postOnlineCreate, postOnlineRoomJoin } from "./api";
@@ -81,12 +81,14 @@ function PawnSquare({ dark }) {
 }
 
 function DeckSlot({ letter, file, dark, isEvolution, isKing, isDragTarget, kingSkinSrc, onClick, onDragStart, onDragEnd, onDragOver, onDrop }) {
-  const isDragon = isEvolution && letter === "N";
-  const isWizard = isEvolution && letter === "B";
-  const evolvedCost = isDragon ? DRAGON_COST : isWizard ? WIZARD_COST : null;
+  const isArcher = isEvolution && letter === "N";
+  const isPope = isEvolution && letter === "B";
+  const evolvedCost = isArcher ? ARCHER_COST : isPope ? POPE_COST : null;
   const cost = letter ? evolvedCost ?? POINT_COSTS[letter] ?? 0 : null;
-  const label = letter ? (isDragon ? "Dragon" : isWizard ? "Wizard" : PIECE_LABELS[letter]) : "";
-  const imageKey = isDragon ? "wD" : isWizard ? "wW" : `w${letter}`;
+  const label = letter ? (isArcher ? "Archer" : isPope ? "Pope" : PIECE_LABELS[letter]) : "";
+  // The Archer/Pope reuse the old Wizard/Archer skins - see
+  // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+  const imageKey = isArcher ? "wW" : isPope ? "wA" : `w${letter}`;
   // The King's slot always shows whatever skin is currently equipped (see
   // customGame/skinStore.js) - kept in sync with the hub avatar and the
   // actual game board.
@@ -125,11 +127,13 @@ function DeckSlot({ letter, file, dark, isEvolution, isKing, isDragTarget, kingS
   );
 }
 
-const EVOLUTION_ART = { N: "wD", B: "wW" };
-const EVOLUTION_NAME = { N: "Dragon", B: "Wizard" };
-// Short text for the palette card's corner badge - a Bishop evolution
-// crafts 2 Wizards at once, a Knight evolution crafts 1 Dragon.
-const EVOLUTION_BADGE_LABEL = { N: "EVO", B: "2× EVO" };
+// The Archer/Pope reuse the old Wizard/Archer skins - see
+// flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+const EVOLUTION_ART = { N: "wW", B: "wA" };
+const EVOLUTION_NAME = { N: "Archer", B: "Pope" };
+// Short text for the palette card's corner badge - both evolutions now
+// craft exactly one hero piece.
+const EVOLUTION_BADGE_LABEL = { N: "EVO", B: "EVO" };
 
 // --- Small per-piece movement demos -------------------------------------
 // A compact grid centered on the piece, with dots marking every square it
@@ -171,13 +175,11 @@ const DEMO_MOVE_OFFSETS = {
   R: slidingOffsets(ROOK_DIRS),
   B: slidingOffsets(BISHOP_DIRS),
   N: KNIGHT_OFFSETS,
-  A: KING_STEP_OFFSETS,
   H: [...KNIGHT_OFFSETS, ...HYDRA_RING_EXTRA_OFFSETS],
   C: [[0, 1], [0, 2]],
   P: [[0, 1], [0, 2]],
 };
 const DEMO_SHOOT_OFFSETS = {
-  A: KNIGHT_OFFSETS,
   C: [[-1, 1], [1, 1], ...CYCLOPS_CAPTURE_OFFSET],
   P: [[-1, 1], [1, 1]],
 };
@@ -186,7 +188,7 @@ const DEMO_CAPTIONS = {
   R: "Moves any distance in a straight line.",
   B: "Moves any distance diagonally.",
   N: "Jumps in an L-shape, over other pieces.",
-  A: "Moves one square any direction (dots), or shoots a piece a knight's-move away without moving (rings).",
+  D: "Moves any distance in a straight line like a Rook, or jumps in an L-shape like a Knight.",
   H: "Jumps to any square exactly two squares away - straight, diagonal, or a knight's L-shape - forming a full ring around it. It can never move just one square, unlike a King.",
   C: "Moves forward like a Pawn (dots) and captures diagonally like one too (near rings) - plus one extra trick: a two-square hop diagonally to its own left (far ring).",
   M: "Has no moves of its own - it moves exactly like whatever piece your opponent moved last. If they move a Knight, your Mirror can move like a Knight on your next turn. Before they've moved anything, it can't move yet.",
@@ -226,19 +228,25 @@ const DEMO_CELL_PX = 20;
 // The full set of destinations from EVERY mode stays dotted/ringed on the
 // board throughout, so switching modes only changes what's animating, never
 // what's visible - you always see the whole picture.
-const PIECE_DEMO_ART = { N: "wD", B: "wW", A: "wA" };
+// The Archer/Pope reuse the old Wizard/Archer skins - see
+// flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+const PIECE_DEMO_ART = { N: "wW", B: "wA", D: "wD" };
 const PIECE_DEMO_MODES = {
+  // Knight's evolution slot -> Archer.
   N: [
-    { label: "Moves like a Rook…", offsets: slidingOffsets(ROOK_DIRS), style: "dot" },
-    { label: "…and like a Knight", offsets: KNIGHT_OFFSETS, style: "dot" },
-  ],
-  B: [
-    { label: "Moves like a Bishop…", offsets: slidingOffsets(BISHOP_DIRS), style: "dot" },
-    { label: "…and one square like a King", offsets: KING_STEP_OFFSETS, style: "dot" },
-  ],
-  A: [
     { label: "Moves one square any direction…", offsets: KING_STEP_OFFSETS, style: "dot" },
     { label: "…or shoots a knight's-move away without moving", offsets: KNIGHT_OFFSETS, style: "ring" },
+  ],
+  // Bishop's evolution slot -> Pope. Only ever a king-step - no bishop-line
+  // diagonal at all, unlike the old Wizard this replaces. Its other half,
+  // the aura that lets nearby Pawns move further, isn't a "destination this
+  // piece itself travels to" and so has no animated mode here - see its own
+  // caption text where the Evo Slot names it.
+  B: [{ label: "Moves one square any direction - its only move", offsets: KING_STEP_OFFSETS, style: "dot" }],
+  // Directly draftable from the palette now, like the Hydra/Cyclops/Mirror.
+  D: [
+    { label: "Moves like a Rook…", offsets: slidingOffsets(ROOK_DIRS), style: "dot" },
+    { label: "…and like a Knight", offsets: KNIGHT_OFFSETS, style: "dot" },
   ],
 };
 
@@ -333,7 +341,7 @@ function EvoSlotDragDemo() {
         <img src={pieceImageSrc("wB")} alt="" className="evo-help-drag-icon bishop" />
         <span className="evo-help-target">+</span>
       </div>
-      <p className="piece-demo-caption">Drag a Knight or Bishop card here. Knight → 1 Dragon. Bishop → 2 Wizards.</p>
+      <p className="piece-demo-caption">Drag a Knight or Bishop card here. Knight → 1 Archer. Bishop → 1 Pope.</p>
     </div>
   );
 }
@@ -382,8 +390,10 @@ function PaletteCard({ letter, locked, expanded, onDragStart, onDragEnd, onToggl
 function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPiece, onDragEndPiece, onReset }) {
   const [showDemo, setShowDemo] = useState(false);
   const depleted = evoSlotType !== null && remaining === 0;
-  const pieceArt = evoSlotType === "N" ? "wD" : "wW";
-  const pieceName = evoSlotType === "N" ? "Dragon" : "Wizard";
+  // The Archer/Pope reuse the old Wizard/Archer skins - see
+  // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+  const pieceArt = evoSlotType === "N" ? "wW" : "wA";
+  const pieceName = evoSlotType === "N" ? "Archer" : "Pope";
 
   // The recipe changing (crafted, reset, depleted) makes the previous demo
   // stale - close it rather than leave a mismatched panel open.
@@ -484,13 +494,13 @@ export default function DeckBuilder({
     initial[KING_HOME_INDEX] = "K";
     return initial;
   });
-  // Which deck slots hold an evolution (a Bishop craft produces 2 at once).
+  // Which deck slots hold an evolution (each recipe now produces exactly 1).
   // Only ever meaningful for a slot that still holds a Knight or Bishop -
   // re-derived below rather than trusted directly, so it self-clears the
   // moment a piece is removed or swapped out from under it.
   const [evolvedIndices, setEvolvedIndices] = useState(() => new Set());
-  // The Evo Slot's active recipe: null (empty), "N" (-> 1 Dragon) or "B"
-  // (-> 2 Wizards). Only one recipe is active at a time - the reset (X)
+  // The Evo Slot's active recipe: null (empty), "N" (-> 1 Archer) or "B"
+  // (-> 1 Pope). Only one recipe is active at a time - the reset (X)
   // button clears it (and un-places anything from it) so a different one
   // can be started.
   const [evoSlotType, setEvoSlotType] = useState(null);
@@ -561,7 +571,7 @@ export default function DeckBuilder({
     [deck, evolvedIndices]
   );
 
-  const evoSlotTotal = evoSlotType === "B" ? 2 : evoSlotType === "N" ? 1 : 0;
+  const evoSlotTotal = evoSlotType ? 1 : 0;
   const evoSlotPlacedCount = [...effectiveEvolvedIndices].filter((i) => deck[i] === evoSlotType).length;
   const evoSlotRemaining = evoSlotTotal - evoSlotPlacedCount;
 
@@ -651,7 +661,7 @@ export default function DeckBuilder({
   }
 
   // Clears the recipe AND anything it already placed on the deck, so a
-  // different evolution (e.g. swapping a placed Dragon back for 2 Wizards)
+  // different evolution (e.g. swapping a placed Archer back for a Pope)
   // can be crafted fresh.
   function handleEvoSlotReset() {
     const placedIndices = [...effectiveEvolvedIndices].filter((i) => deck[i] === evoSlotType);
@@ -673,7 +683,7 @@ export default function DeckBuilder({
       deck.reduce((sum, letter, i) => {
         if (!letter) return sum;
         const isEvolved = effectiveEvolvedIndices.has(i);
-        const evolvedCost = isEvolved && letter === "N" ? DRAGON_COST : isEvolved && letter === "B" ? WIZARD_COST : null;
+        const evolvedCost = isEvolved && letter === "N" ? ARCHER_COST : isEvolved && letter === "B" ? POPE_COST : null;
         return sum + (evolvedCost ?? POINT_COSTS[letter] ?? 0);
       }, 0),
     [deck, effectiveEvolvedIndices]

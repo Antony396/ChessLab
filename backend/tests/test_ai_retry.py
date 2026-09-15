@@ -14,7 +14,7 @@ def test_ai_move_excludes_hero_check_illegal_moves_from_the_first_call(client, m
     # hero-piece check" fix. h7-h6 ignores the check and must already be
     # excluded on the very first call.
     board = chess.Board(fen="8/7p/8/8/8/5R2/8/K5k1 b - - 0 1")
-    game = store.create_game(board, white_dragon_square=chess.F3, vs_ai=True)
+    game = store.create_game(board, white_dragon_squares={chess.F3}, vs_ai=True)
     game.status = "in_progress"
 
     bad_move = chess.Move.from_uci("h7h6")  # ignores the Dragon's knight-shape check on g1
@@ -43,7 +43,7 @@ def test_ai_move_still_retries_if_the_engine_somehow_proposes_an_excluded_move(c
     # case the engine (a fake one, here) proposes something already known
     # to be unsafe - it should exclude it and ask again rather than 500ing.
     board = chess.Board(fen="8/7p/8/8/8/5R2/8/K5k1 b - - 0 1")
-    game = store.create_game(board, white_dragon_square=chess.F3, vs_ai=True)
+    game = store.create_game(board, white_dragon_squares={chess.F3}, vs_ai=True)
     game.status = "in_progress"
 
     bad_move = chess.Move.from_uci("h7h6")

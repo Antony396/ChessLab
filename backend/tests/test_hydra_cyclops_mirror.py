@@ -3,7 +3,7 @@ straight-two, or diagonal-two - and NEVER just one square, 12pts), Cyclops
 (Pawn push + capture, plus an extra 2-square forward-left-only capture,
 2pts), and Mirror (mimics whatever base type the opponent last moved, 5pts)
 - the three newest hero pieces. Mirrors the style of test_rules.py (bare-board
-unit checks) and test_dragon.py/test_wizard_archer_checkmate.py (route-level
+unit checks) and test_dragon.py/test_pope_archer_checkmate.py (route-level
 integration)."""
 
 import chess

@@ -2,11 +2,11 @@ import { Chess } from "chess.js";
 
 // Legal-destination hints for the board's drag-start highlight. chess.js
 // only understands the piece actually encoded in the FEN, which is correct
-// for normal pieces and for a Dragon's rook-mode / Wizard's bishop-mode
-// travel (they're stored as a Rook / Bishop respectively), but knows
-// nothing about their extra movement mode, or about the Archer's king-step
-// relocate and knight's-move shoot - those are layered on top here,
-// mirroring backend/app/custom_chess/rules.py and
+// for normal pieces and for a Dragon's rook-mode travel (it's stored as a
+// Rook), but knows nothing about their extra movement mode, or about the
+// Pope's king-step-only movement, the Archer's king-step relocate and
+// knight's-move shoot, or a Pawn boosted by a nearby Pope's aura - those are
+// layered on top here, mirroring backend/app/custom_chess/rules.py and
 // api/custom_game_routes.py's candidate-generation so the hints match what
 // the server will actually accept.
 //
@@ -17,12 +17,12 @@ import { Chess } from "chess.js";
 // server still authoritatively rejects an unsafe move on drop either way -
 // this is a hint overlay, not the rule enforcement.
 
-// Which square is currently a Dragon/Wizard/Archer/Hydra/Cyclops/Mirror
-// lives in its own separate gameState fields, not the FEN - that's how a
-// Dragon's art (say) differs from a plain Rook sitting on the same square.
-// The optimistic FEN preview above moves the piece's *position* instantly,
-// but doesn't touch these on its own, which left the piece rendering as
-// its plain base type (a Rook, a Knight, ...) for the instant between the
+// Which square is currently a Dragon/Pope/Archer/Hydra/Cyclops/Mirror lives
+// in its own separate gameState fields, not the FEN - that's how a Dragon's
+// art (say) differs from a plain Rook sitting on the same square. The
+// optimistic FEN preview above moves the piece's *position* instantly, but
+// doesn't touch these on its own, which left the piece rendering as its
+// plain base type (a Rook, a Knight, ...) for the instant between the
 // optimistic preview landing and the real response arriving, since art
 // selection keys off these squares matching, not the FEN. This relocates
 // whichever one of them held `from` over to `to`, mirroring the FEN move
@@ -30,10 +30,8 @@ import { Chess } from "chess.js";
 // itself doesn't move, and `from` there is the archer's own square (which
 // this would incorrectly "relocate" onto the shot's target square).
 const HERO_SQUARE_ARRAY_FIELDS = [
-  "white_wizard_squares",
-  "black_wizard_squares",
-  "white_archer_squares",
-  "black_archer_squares",
+  "white_dragon_squares",
+  "black_dragon_squares",
   "white_hydra_squares",
   "black_hydra_squares",
   "white_cyclops_squares",
@@ -41,7 +39,12 @@ const HERO_SQUARE_ARRAY_FIELDS = [
   "white_mirror_squares",
   "black_mirror_squares",
 ];
-const HERO_SQUARE_SINGLE_FIELDS = ["white_dragon_square", "black_dragon_square"];
+const HERO_SQUARE_SINGLE_FIELDS = [
+  "white_pope_square",
+  "black_pope_square",
+  "white_archer_square",
+  "black_archer_square",
+];
 
 export function relocateHeroTrackingSquares(gameState, from, to) {
   const patch = {};
@@ -96,7 +99,7 @@ function offsetDestinations(offsets, fromSquare) {
 // gets, just done manually since chess.js's own move() has no idea these
 // moves are legal at all. Never used for a castle, en passant, or
 // promotion - no hero special move is ever any of those.
-function applyRelocateAndCapture(fen, from, to) {
+function applyRelocateAndCapture(fen, from, to, promotion) {
   try {
     const chess = new Chess(fen);
     const mover = chess.get(from);
@@ -104,7 +107,9 @@ function applyRelocateAndCapture(fen, from, to) {
     const wasCapture = Boolean(chess.get(to));
     chess.remove(from);
     if (wasCapture) chess.remove(to);
-    chess.put({ type: mover.type, color: mover.color }, to);
+    const landingRank = Number(to[1]);
+    const isPromotion = mover.type === "p" && (landingRank === 8 || landingRank === 1);
+    chess.put({ type: isPromotion ? promotion || "q" : mover.type, color: mover.color }, to);
 
     const [placement, activeColor, castling] = chess.fen().split(" ");
     const nextColor = activeColor === "w" ? "b" : "w";
@@ -143,9 +148,9 @@ function applyNonRelocatingCapture(fen, targetSquare) {
 // Tries a plain chess.js move first, since that correctly handles every
 // normal move (including a hero piece's own "plain" mode - the FEN only
 // ever encodes the base type it's stored as). If that's not legal, and the
-// caller says this square is a Dragon/Wizard/Hydra/Cyclops/Mirror/Archer,
-// checks whether `to` is actually one of THAT piece's own hero-special
-// destinations (reusing the exact same candidate logic
+// caller says this square is a Dragon/Pope/Hydra/Cyclops/Mirror/Archer/a
+// Pope-boosted Pawn, checks whether `to` is actually one of THAT piece's own
+// hero-special destinations (reusing the exact same candidate logic
 // computeLegalDestinations uses) before applying it by hand - so a
 // genuinely illegal drop still correctly returns null and waits for the
 // server to reject it, same as before.
@@ -156,13 +161,14 @@ export function tryOptimisticFen(
   {
     promotion = "q",
     isDragonSquare,
-    isWizardSquare,
+    isPopeSquare,
     isArcherSquare,
     isHydraSquare,
     isCyclopsSquare,
     isMirrorSquare,
     mirrorMimicType,
     mirrorMimicIsHydra,
+    ownPopeSquare,
     shoot,
   } = {}
 ) {
@@ -192,7 +198,7 @@ export function tryOptimisticFen(
   if (isArcherSquare && archerRelocateDestinations(chess, from).includes(to)) {
     return applyRelocateAndCapture(fen, from, to);
   }
-  if (isWizardSquare && kingStepDestinations(chess, from).includes(to)) {
+  if (isPopeSquare && kingStepDestinations(chess, from).includes(to)) {
     return applyRelocateAndCapture(fen, from, to);
   }
   if (isHydraSquare && hydraRingExtraDestinations(chess, from).includes(to)) {
@@ -212,6 +218,26 @@ export function tryOptimisticFen(
   ) {
     return applyRelocateAndCapture(fen, from, to);
   }
+  if (
+    !isDragonSquare &&
+    !isPopeSquare &&
+    !isArcherSquare &&
+    !isHydraSquare &&
+    !isCyclopsSquare &&
+    !isMirrorSquare &&
+    mover.type === "p" &&
+    isWithinPopeAura(ownPopeSquare, from)
+  ) {
+    if (popeBoostedForwardSquare(from, mover.color) === to && !chess.get(to)) {
+      return applyBoostedPawnPush(fen, from, to, promotion);
+    }
+    if (popeBoostedDiagonalCaptureSquares(from, mover.color).includes(to)) {
+      const occupant = chess.get(to);
+      if (occupant && occupant.color !== mover.color && occupant.type !== "k") {
+        return applyRelocateAndCapture(fen, from, to, promotion);
+      }
+    }
+  }
 
   return null;
 }
@@ -224,7 +250,7 @@ function kingStepDestinations(chess, fromSquare) {
   });
 }
 
-// An Archer's king-step relocate is move-only - unlike the Wizard/Mirror's
+// An Archer's king-step relocate is move-only - unlike the Pope/Mirror's
 // own king-step modes, it can never capture (an enemy king included), so
 // this can't just reuse kingStepDestinations - see execute_archer_move.
 function archerRelocateDestinations(chess, fromSquare) {
@@ -273,6 +299,71 @@ function cyclopsSpecialCaptureSquare(fromSquare, color) {
   return toSquare([f, r]);
 }
 
+// Mirrors backend/app/custom_chess/rules.py's is_within_pope_aura: Chebyshev
+// distance <= 1 from the Pope's own square.
+function isWithinPopeAura(popeSquare, square) {
+  if (!popeSquare) return false;
+  const [pf, pr] = toCoord(popeSquare);
+  const [sf, sr] = toCoord(square);
+  return Math.max(Math.abs(pf - sf), Math.abs(pr - sr)) <= 1;
+}
+
+// Mirrors rules.pope_boosted_forward_square: two squares straight ahead,
+// regardless of rank (only the path needs to be clear, not the starting
+// rank).
+function popeBoostedForwardSquare(fromSquare, color) {
+  const [f, r] = toCoord(fromSquare);
+  const dr = color === "w" ? 2 : -2;
+  const nr = r + dr;
+  if (nr < 0 || nr > 7) return null;
+  return toSquare([f, nr]);
+}
+
+// Mirrors rules.pope_boosted_diagonal_capture_squares: both two-square
+// diagonal jumps forward (a real Pawn's own diagonal capture only ever
+// reaches one square, and even the Cyclops's extra hop only ever covers its
+// forward-left).
+function popeBoostedDiagonalCaptureSquares(fromSquare, color) {
+  const [f, r] = toCoord(fromSquare);
+  const dr = color === "w" ? 2 : -2;
+  const nr = r + dr;
+  const squares = [];
+  if (nr < 0 || nr > 7) return squares;
+  for (const df of [-2, 2]) {
+    const nf = f + df;
+    if (nf >= 0 && nf <= 7) squares.push(toSquare([nf, nr]));
+  }
+  return squares;
+}
+
+// A boosted Pawn's forward-2 push, applied by hand like
+// applyRelocateAndCapture - unlike a capture, this needs to double-check the
+// square directly ahead is also clear (a normal double-step's path-clear
+// rule, just extended to a non-starting rank), and can land on the back
+// rank (promotion) the same way a normal pawn push can.
+function applyBoostedPawnPush(fen, from, to, promotion) {
+  try {
+    const chess = new Chess(fen);
+    const mover = chess.get(from);
+    if (!mover) return null;
+    const [ff, fr] = toCoord(from);
+    const oneAheadRank = fr + (mover.color === "w" ? 1 : -1);
+    const oneAhead = toSquare([ff, oneAheadRank]);
+    if (chess.get(oneAhead) || chess.get(to)) return null;
+    chess.remove(from);
+    const landingRank = Number(to[1]);
+    const isPromotion = landingRank === 8 || landingRank === 1;
+    chess.put({ type: isPromotion ? promotion : mover.type, color: mover.color }, to);
+
+    const [placement, activeColor, castling] = chess.fen().split(" ");
+    const nextColor = activeColor === "w" ? "b" : "w";
+    const fullmove = Number(fen.split(" ")[5]) + (activeColor === "b" ? 1 : 0);
+    return `${placement} ${nextColor} ${castling} - 0 ${fullmove}`;
+  } catch {
+    return null;
+  }
+}
+
 // Every square python-chess's own legal-move generator would allow a piece
 // of mimicType to reach from fromSquare, mirroring
 // custom_game_routes.py's _mirror_candidate_destinations - built by loading
@@ -310,13 +401,14 @@ export function computeLegalDestinations({
   fen,
   square,
   isDragonSquare,
-  isWizardSquare,
+  isPopeSquare,
   isArcherSquare,
   isHydraSquare,
   isCyclopsSquare,
   isMirrorSquare,
   mirrorMimicType, // one of "q"/"r"/"b"/"n"/"p"/"k", or null/undefined if nothing to mimic yet
   mirrorMimicIsHydra,
+  ownPopeSquare, // this piece's own side's Pope square, for the aura's boosted-Pawn destinations
 }) {
   let chess;
   try {
@@ -369,12 +461,20 @@ export function computeLegalDestinations({
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
 
+  if (isPopeSquare) {
+    // No baseModeDestinations fallback - unlike the old Wizard this
+    // replaces, a Pope has NO native movement mode at all (its Bishop
+    // storage's diagonal-line moves are never actually legal for it), so
+    // king-step is the sole source of truth, structurally like the Archer's
+    // own king-step relocate above.
+    const destinations = kingStepDestinations(chess, square);
+    return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
+  }
+
   const baseModeDestinations = chess.moves({ square, verbose: true }).map((m) => m.to);
   let destinations;
   if (isDragonSquare) {
     destinations = [...new Set([...baseModeDestinations, ...knightShapeDestinations(chess, square, { requireEnemy: false })])];
-  } else if (isWizardSquare) {
-    destinations = [...new Set([...baseModeDestinations, ...kingStepDestinations(chess, square)])];
   } else if (isHydraSquare) {
     // baseModeDestinations already covers the knight-shaped third natively
     // (Hydra is stored as a Knight) - the other two thirds of its ring
@@ -388,6 +488,23 @@ export function computeLegalDestinations({
     destinations = [...baseModeDestinations];
     if (specialTo && specialOccupant && specialOccupant.color !== mover.color && specialOccupant.type !== "k") {
       destinations.push(specialTo);
+    }
+  } else if (mover.type === "p" && isWithinPopeAura(ownPopeSquare, square)) {
+    // A plain Pawn (never a Cyclops - handled above already) within an
+    // allied Pope's aura: baseModeDestinations already covers its normal
+    // moves, plus the boosted forward-2 push and both diagonal-2 captures.
+    destinations = [...baseModeDestinations];
+    const forwardTo = popeBoostedForwardSquare(square, mover.color);
+    if (forwardTo && !destinations.includes(forwardTo) && !chess.get(forwardTo)) {
+      const [ff, fr] = toCoord(square);
+      const oneAhead = toSquare([ff, fr + (mover.color === "w" ? 1 : -1)]);
+      if (!chess.get(oneAhead)) destinations.push(forwardTo);
+    }
+    for (const to of popeBoostedDiagonalCaptureSquares(square, mover.color)) {
+      const occupant = chess.get(to);
+      if (occupant && occupant.color !== mover.color && occupant.type !== "k" && !destinations.includes(to)) {
+        destinations.push(to);
+      }
     }
   } else {
     destinations = baseModeDestinations;

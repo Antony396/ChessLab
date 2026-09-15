@@ -15,7 +15,7 @@ router = APIRouter()
 
 STANDARD_BACK_RANK_LETTERS = "RNBQKBNR"
 DRAGON_COST = 8
-WIZARD_COST = 6
+POPE_COST = 6
 ARCHER_COST = 6
 HYDRA_COST = 12
 CYCLOPS_COST = 2
@@ -27,7 +27,7 @@ POINT_COSTS = {
     "R": 5,
     "B": 3,
     "N": 3,
-    "A": ARCHER_COST,
+    "D": DRAGON_COST,
     "H": HYDRA_COST,
     "C": CYCLOPS_COST,
     "M": MIRROR_COST,
@@ -35,13 +35,13 @@ POINT_COSTS = {
 }
 MAX_DECK_POINTS = 31
 
-# Hydra/Cyclops/Mirror are drafted directly (like the Archer), not evolved -
-# each draft letter isn't a real FEN piece letter, so it's translated to the
-# closest real type before build_fen, then recovered afterwards as a
-# tracked-squares set. A Hydra needs a Knight's native jump, a Cyclops needs
-# a Pawn's native forward push, a Mirror is stored as a Bishop (an arbitrary
-# placeholder - see rules.execute_mirror_move).
-HERO_DRAFT_LETTER_TO_STORED = {"A": "N", "H": "N", "C": "P", "M": "B"}
+# Dragon/Hydra/Cyclops/Mirror are drafted directly, not evolved - each draft
+# letter isn't a real FEN piece letter, so it's translated to the closest
+# real type before build_fen, then recovered afterwards as a tracked-squares
+# set. A Dragon needs a Rook's native line movement, a Hydra needs a Knight's
+# native jump, a Cyclops needs a Pawn's native forward push, a Mirror is
+# stored as a Bishop (an arbitrary placeholder - see rules.execute_mirror_move).
+HERO_DRAFT_LETTER_TO_STORED = {"D": "R", "H": "N", "C": "P", "M": "B"}
 
 
 def _standard_back_rank(rank: str) -> dict[str, str]:
@@ -55,9 +55,9 @@ def _compute_deck_points(back_rank: dict[str, str], evolved_squares: list[str]) 
         letter = letter.strip().upper()
         square = square.strip().lower()
         if square in evolved and letter == "N":
-            total += DRAGON_COST
+            total += ARCHER_COST
         elif square in evolved and letter == "B":
-            total += WIZARD_COST
+            total += POPE_COST
         else:
             total += POINT_COSTS.get(letter, 0)
     return total
@@ -65,31 +65,33 @@ def _compute_deck_points(back_rank: dict[str, str], evolved_squares: list[str]) 
 
 # --- Check detection for evolved pieces --------------------------------
 #
-# Every evolved piece is stored as the closest real python-chess piece type
-# (Dragon=Rook, Wizard=Bishop, Archer=Knight) so the board stays a valid,
+# Every evolved/hero piece is stored as the closest real python-chess piece
+# type (Dragon=Rook, Pope=Bishop, Archer=Knight) so the board stays a valid,
 # serializable position. python-chess's own board.is_check()/is_attacked_by()
 # only ever look at a piece's STORED type's native attack pattern, so they
 # have a blind spot for exactly the movement mode that makes each piece
 # special:
 #   - a Dragon threatens the enemy king via a knight-shaped hop that a Rook
 #     could never make
-#   - a Wizard threatens it via a one-square king-step that a Bishop could
-#     never make
+#   - a Pope threatens it via a one-square king-step that a Bishop could
+#     never make (its only movement mode)
 #   - an Archer threatens it via a one-square king-step relocation that a
 #     Knight could never make (its knight-shaped "shoot" mode - the one mode
 #     that IS visible to python-chess, since it happens to match a Knight's
 #     real attack pattern - can never target the King at all: see
 #     rules.execute_archer_shoot's ban on shooting it)
+#   - a Pawn boosted by a nearby Pope's aura threatens the enemy king via a
+#     two-square diagonal capture jump that a plain Pawn could never make
 #
-# Without accounting for these, a side could simply ignore a Dragon/Wizard/
-# Archer's threat against their own king (since python-chess never flags it
-# as check), or even have their king actually captured outright by one of
-# these moves - the checkmate rule that's supposed to prevent that entirely
-# depends on check being detected correctly in the first place. Everything
-# below layers the missing threat squares on top of python-chess's own
-# attack detection, and is used both to reject a mover's own move that
-# leaves them exposed (_apply_move) and to compute true checkmate/stalemate
-# (_compute_status).
+# Without accounting for these, a side could simply ignore a Dragon/Pope/
+# Archer/boosted-Pawn's threat against their own king (since python-chess
+# never flags it as check), or even have their king actually captured
+# outright by one of these moves - the checkmate rule that's supposed to
+# prevent that entirely depends on check being detected correctly in the
+# first place. Everything below layers the missing threat squares on top of
+# python-chess's own attack detection, and is used both to reject a mover's
+# own move that leaves them exposed (_apply_move) and to compute true
+# checkmate/stalemate (_compute_status).
 
 
 def _mirror_current_mimic_type(game: store.CustomGame, mirror_owner_color: chess.Color) -> Optional[chess.PieceType]:
@@ -111,7 +113,7 @@ def _mirror_threat_squares(
     board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType, mimic_is_hydra: bool = False
 ) -> set[chess.Square]:
     """Squares a Mirror currently threatens, given it's mimicking
-    mimic_type. King mimicry is pure geometry (mirroring the Wizard/Archer
+    mimic_type. King mimicry is pure geometry (mirroring the Pope/Archer
     king-step threat above); every other type reuses python-chess's own
     board.attacks() on a scratch copy with the Mirror's real Bishop
     temporarily swapped for the mimicked type - correctly blocked by
@@ -132,21 +134,42 @@ def _mirror_threat_squares(
     return squares
 
 
+def _boosted_pawn_threat_squares(game: store.CustomGame, pope_square: Optional[chess.Square], color: chess.Color) -> set[chess.Square]:
+    """Squares a color's own plain Pawns threaten via the Pope's aura - the
+    two-square diagonal capture jump (see rules.pope_boosted_diagonal_capture_squares),
+    invisible to python-chess's own attack detection the same way every
+    other hero-special mode is. The aura's forward push isn't a capture, so
+    it never threatens anything and has no analog here. A Cyclops is stored
+    as a Pawn too but is a distinct hero identity with its own special move
+    already, so it's excluded here - the aura only ever boosts PLAIN Pawns."""
+    squares: set[chess.Square] = set()
+    if pope_square is None:
+        return squares
+    cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
+    for square in game.board.pieces(chess.PAWN, color):
+        if square in cyclops_squares:
+            continue
+        if rules.is_within_pope_aura(pope_square, square):
+            squares.update(rules.pope_boosted_diagonal_capture_squares(square, color))
+    return squares
+
+
 def _extra_threat_squares(game: store.CustomGame, attacker_color: chess.Color) -> set[chess.Square]:
     """Squares attacked by attacker_color's hero pieces via a movement mode
     python-chess's own attack detection doesn't know about."""
     squares: set[chess.Square] = set()
 
-    dragon_square = game.white_dragon_square if attacker_color == chess.WHITE else game.black_dragon_square
-    if dragon_square is not None:
+    dragon_squares = game.white_dragon_squares if attacker_color == chess.WHITE else game.black_dragon_squares
+    for dragon_square in dragon_squares:
         squares.update(rules.offset_squares(dragon_square, rules.KNIGHT_SHAPE_OFFSETS))
 
-    wizard_squares = game.white_wizard_squares if attacker_color == chess.WHITE else game.black_wizard_squares
-    for wizard_square in wizard_squares:
-        squares.update(rules.offset_squares(wizard_square, rules.KING_STEP_OFFSETS))
+    pope_square = game.white_pope_square if attacker_color == chess.WHITE else game.black_pope_square
+    if pope_square is not None:
+        squares.update(rules.offset_squares(pope_square, rules.KING_STEP_OFFSETS))
+    squares.update(_boosted_pawn_threat_squares(game, pope_square, attacker_color))
 
-    archer_squares = game.white_archer_squares if attacker_color == chess.WHITE else game.black_archer_squares
-    for archer_square in archer_squares:
+    archer_square = game.white_archer_square if attacker_color == chess.WHITE else game.black_archer_square
+    if archer_square is not None:
         squares.update(rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS))
 
     # A Hydra's knight-shaped third of its ring is already covered by
@@ -201,12 +224,12 @@ def _scratch_game_after(
     scratch = store.CustomGame(
         id="scratch",
         board=board_after,
-        white_dragon_square=game.white_dragon_square,
-        black_dragon_square=game.black_dragon_square,
-        white_wizard_squares=set(game.white_wizard_squares),
-        black_wizard_squares=set(game.black_wizard_squares),
-        white_archer_squares=set(game.white_archer_squares),
-        black_archer_squares=set(game.black_archer_squares),
+        white_dragon_squares=set(game.white_dragon_squares),
+        black_dragon_squares=set(game.black_dragon_squares),
+        white_pope_square=game.white_pope_square,
+        black_pope_square=game.black_pope_square,
+        white_archer_square=game.white_archer_square,
+        black_archer_square=game.black_archer_square,
         white_hydra_squares=set(game.white_hydra_squares),
         black_hydra_squares=set(game.black_hydra_squares),
         white_cyclops_squares=set(game.white_cyclops_squares),
@@ -223,7 +246,7 @@ def _scratch_game_after(
         black_last_moved_was_hydra=game.black_last_moved_was_hydra,
     )
     _update_dragon_tracking(scratch, mover_color, from_square, to_square)
-    _update_wizard_tracking(scratch, mover_color, from_square, to_square)
+    _update_pope_tracking(scratch, mover_color, from_square, to_square)
     _update_archer_tracking(scratch, mover_color, from_square, to_square, is_shoot)
     _update_hydra_tracking(scratch, mover_color, from_square, to_square)
     _update_cyclops_tracking(scratch, mover_color, from_square, to_square)
@@ -269,26 +292,27 @@ def _dragon_has_knight_shaped_move(game: store.CustomGame, dragon_square: chess.
     return False
 
 
-def _wizard_has_king_step_move(game: store.CustomGame, wizard_square: chess.Square) -> bool:
-    """Mirrors _dragon_has_knight_shaped_move for the Wizard's king-step
-    mode, which board.is_checkmate()/is_stalemate() can't see either, since
-    it only looks at the Wizard's diagonal (Bishop) moves."""
+def _pope_has_king_step_move(game: store.CustomGame, pope_square: chess.Square) -> bool:
+    """Mirrors _dragon_has_knight_shaped_move for the Pope's king-step mode -
+    its ONLY movement mode, so unlike the old Wizard this replaces,
+    board.is_checkmate()/is_stalemate() can't see ANY of its moves natively
+    (a Bishop's diagonal-line moves are never actually legal for a Pope)."""
     board = game.board
-    piece = board.piece_at(wizard_square)
+    piece = board.piece_at(pope_square)
     if piece is None or piece.piece_type != chess.BISHOP:
         return False
     color = piece.color
-    for dest in rules.offset_squares(wizard_square, rules.KING_STEP_OFFSETS):
+    for dest in rules.offset_squares(pope_square, rules.KING_STEP_OFFSETS):
         target = board.piece_at(dest)
         if target is not None and target.color == color:
             continue
-        if _move_keeps_king_safe(game, chess.Move(wizard_square, dest), color):
+        if _move_keeps_king_safe(game, chess.Move(pope_square, dest), color):
             return True
     return False
 
 
 def _hydra_has_ring_jump_move(game: store.CustomGame, hydra_square: chess.Square) -> bool:
-    """Mirrors _wizard_has_king_step_move for the Hydra's full jump ring
+    """Mirrors _pope_has_king_step_move for the Hydra's full jump ring
     (knight-shape plus the straight-two/diagonal-two squares) -
     board.is_checkmate()/is_stalemate() only ever sees its knight-shaped
     (Knight) moves natively."""
@@ -322,6 +346,36 @@ def _cyclops_has_special_capture_move(game: store.CustomGame, cyclops_square: ch
     return _move_keeps_king_safe(game, chess.Move(cyclops_square, dest), color)
 
 
+def _boosted_pawn_has_escape_move(game: store.CustomGame, pope_square: Optional[chess.Square], color: chess.Color) -> bool:
+    """True if any of color's own Pawns within an allied Pope's aura has a
+    legal (including out-of-check) boosted forward-2 push or diagonal-2
+    capture - the extra modes board.is_checkmate()/is_stalemate() can't see,
+    mirroring _cyclops_has_special_capture_move for the Pope's aura."""
+    if pope_square is None:
+        return False
+    board = game.board
+    cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
+    for pawn_square in board.pieces(chess.PAWN, color):
+        if pawn_square in cyclops_squares:
+            continue
+        if not rules.is_within_pope_aura(pope_square, pawn_square):
+            continue
+        forward = rules.pope_boosted_forward_square(pawn_square, color)
+        if forward is not None and board.piece_at(forward) is None:
+            one_ahead_rank = chess.square_rank(pawn_square) + (1 if color == chess.WHITE else -1)
+            one_ahead = chess.square(chess.square_file(pawn_square), one_ahead_rank)
+            if board.piece_at(one_ahead) is None:
+                if _move_keeps_king_safe(game, chess.Move(pawn_square, forward), color):
+                    return True
+        for dest in rules.pope_boosted_diagonal_capture_squares(pawn_square, color):
+            target = board.piece_at(dest)
+            if target is None or target.color == color or target.piece_type == chess.KING:
+                continue
+            if _move_keeps_king_safe(game, chess.Move(pawn_square, dest), color):
+                return True
+    return False
+
+
 def _mirror_candidate_destinations(
     board: chess.Board, mirror_square: chess.Square, mimic_type: chess.PieceType, mimic_is_hydra: bool = False
 ) -> set[chess.Square]:
@@ -350,7 +404,7 @@ def _mirror_has_a_move(game: store.CustomGame, mirror_square: chess.Square, colo
     out-of-check) move this turn - board.legal_moves is meaningless for this
     square (it only ever sees the Mirror's placeholder Bishop storage, never
     what it's actually mimicking), so this is the sole source of truth,
-    mirroring the Dragon/Wizard/Archer/Hydra/Cyclops checks above."""
+    mirroring the Dragon/Pope/Archer/Hydra/Cyclops checks above."""
     mimic_type = _mirror_current_mimic_type(game, color)
     if mimic_type is None:
         return False
@@ -368,7 +422,7 @@ def _mirror_has_a_move(game: store.CustomGame, mirror_square: chess.Square, colo
 def _archer_has_escape(board: chess.Board, game: store.CustomGame, archer_square: chess.Square, color: chess.Color) -> bool:
     """True if the Archer at archer_square has a legal king-step relocation
     or knight's-move shot (including out of check). Needed for the reverse
-    problem the Dragon/Wizard checks solve: python-chess's is_checkmate()
+    problem the Dragon/Pope checks solve: python-chess's is_checkmate()
     sees a real (but meaningless to us) L-shaped "knight move" for this
     square, which _compute_status must NOT trust as an escape - so this is
     the source of truth for what the Archer can actually still do."""
@@ -388,43 +442,42 @@ def _archer_has_escape(board: chess.Board, game: store.CustomGame, archer_square
 
 def _side_has_a_real_move(game: store.CustomGame, color: chess.Color) -> bool:
     """board.legal_moves is trustworthy for every square except a color's
-    Archer/Mirror squares, where it reports a real (per python-chess's rules
-    for the stored Knight/Bishop) but not actually-real move - so those
-    entries are filtered out entirely. A Cyclops's stored-Pawn moves
+    Archer/Mirror square(s), where it reports a real (per python-chess's
+    rules for the stored Knight/Bishop) but not actually-real move - so
+    those entries are filtered out entirely. A Cyclops's stored-Pawn moves
     (including its plain diagonal capture) are all real, so no filtering is
     needed there - it only ever ADDS the extra far-left hop on top, checked
-    separately below. Every remaining candidate (plus the Dragon/Wizard/
-    Archer/Hydra/Cyclops/Mirror extra modes invisible to legal_moves) is
-    then re-verified with _move_keeps_king_safe, since board.legal_moves
-    only ever accounts for python-chess's own idea of check safety, not the
-    opponent's hero-piece extra threats."""
-    archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
+    separately below. Every remaining candidate (plus the Dragon/Pope/
+    Archer/Hydra/Cyclops/Mirror/boosted-Pawn extra modes invisible to
+    legal_moves) is then re-verified with _move_keeps_king_safe, since
+    board.legal_moves only ever accounts for python-chess's own idea of
+    check safety, not the opponent's hero-piece extra threats."""
+    archer_square = game.white_archer_square if color == chess.WHITE else game.black_archer_square
     mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
     cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
     board = game.board
     for move in board.legal_moves:
-        if move.from_square in archer_squares or move.from_square in mirror_squares:
+        if move.from_square == archer_square or move.from_square in mirror_squares:
             continue
         if _move_keeps_king_safe(game, move, color):
             return True
 
-    dragon_square = game.white_dragon_square if color == chess.WHITE else game.black_dragon_square
-    if dragon_square is not None and _dragon_has_knight_shaped_move(game, dragon_square):
-        return True
-
-    wizard_squares = game.white_wizard_squares if color == chess.WHITE else game.black_wizard_squares
-    for wizard_square in wizard_squares:
-        if _wizard_has_king_step_move(game, wizard_square):
+    dragon_squares = game.white_dragon_squares if color == chess.WHITE else game.black_dragon_squares
+    for dragon_square in dragon_squares:
+        if _dragon_has_knight_shaped_move(game, dragon_square):
             return True
+
+    pope_square = game.white_pope_square if color == chess.WHITE else game.black_pope_square
+    if pope_square is not None and _pope_has_king_step_move(game, pope_square):
+        return True
 
     hydra_squares = game.white_hydra_squares if color == chess.WHITE else game.black_hydra_squares
     for hydra_square in hydra_squares:
         if _hydra_has_ring_jump_move(game, hydra_square):
             return True
 
-    for archer_square in archer_squares:
-        if _archer_has_escape(board, game, archer_square, color):
-            return True
+    if archer_square is not None and _archer_has_escape(board, game, archer_square, color):
+        return True
 
     for cyclops_square in cyclops_squares:
         if _cyclops_has_special_capture_move(game, cyclops_square, color):
@@ -433,6 +486,9 @@ def _side_has_a_real_move(game: store.CustomGame, color: chess.Color) -> bool:
     for mirror_square in mirror_squares:
         if _mirror_has_a_move(game, mirror_square, color):
             return True
+
+    if _boosted_pawn_has_escape_move(game, pope_square, color):
+        return True
 
     return False
 
@@ -454,13 +510,13 @@ def _real_legal_standard_moves(game: store.CustomGame, color: chess.Color) -> se
     those wasted searches was picked with zero awareness the king needed
     saving at all.
     """
-    archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
+    archer_square = game.white_archer_square if color == chess.WHITE else game.black_archer_square
     mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
     board = game.board
     return {
         move
         for move in board.legal_moves
-        if move.from_square not in archer_squares
+        if move.from_square != archer_square
         and move.from_square not in mirror_squares
         and _move_keeps_king_safe(game, move, color)
     }
@@ -468,8 +524,8 @@ def _real_legal_standard_moves(game: store.CustomGame, color: chess.Color) -> se
 
 def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optional[tuple[chess.Square, chess.Square, bool]]:
     """Stockfish (see ai.py) only ever proposes a standard chess move - it
-    has no idea a Dragon/Wizard/Hydra/Archer/Cyclops/Mirror can move in
-    ways board.legal_moves doesn't recognize at all. Usually that's fine (a
+    has no idea a Dragon/Pope/Hydra/Archer/Cyclops/Mirror/boosted-Pawn can
+    move in ways board.legal_moves doesn't recognize at all. Usually that's fine (a
     hero piece's PLAIN mode is a real python-chess move it can still find),
     but if the position's ONLY legal move for this color is one of these
     hero-special ones - most commonly because it's the only way to escape a
@@ -488,28 +544,28 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
     """
     board = game.board
 
-    dragon_square = game.white_dragon_square if color == chess.WHITE else game.black_dragon_square
-    if dragon_square is not None:
+    dragon_squares = game.white_dragon_squares if color == chess.WHITE else game.black_dragon_squares
+    for dragon_square in dragon_squares:
         piece = board.piece_at(dragon_square)
-        if piece is not None and piece.piece_type == chess.ROOK:
-            for dest in rules.offset_squares(dragon_square, rules.KNIGHT_SHAPE_OFFSETS):
-                target = board.piece_at(dest)
-                if target is not None and target.color == color:
-                    continue
-                if _move_keeps_king_safe(game, chess.Move(dragon_square, dest), color):
-                    return dragon_square, dest, False
-
-    wizard_squares = game.white_wizard_squares if color == chess.WHITE else game.black_wizard_squares
-    for wizard_square in wizard_squares:
-        piece = board.piece_at(wizard_square)
-        if piece is None or piece.piece_type != chess.BISHOP:
+        if piece is None or piece.piece_type != chess.ROOK:
             continue
-        for dest in rules.offset_squares(wizard_square, rules.KING_STEP_OFFSETS):
+        for dest in rules.offset_squares(dragon_square, rules.KNIGHT_SHAPE_OFFSETS):
             target = board.piece_at(dest)
             if target is not None and target.color == color:
                 continue
-            if _move_keeps_king_safe(game, chess.Move(wizard_square, dest), color):
-                return wizard_square, dest, False
+            if _move_keeps_king_safe(game, chess.Move(dragon_square, dest), color):
+                return dragon_square, dest, False
+
+    pope_square = game.white_pope_square if color == chess.WHITE else game.black_pope_square
+    if pope_square is not None:
+        piece = board.piece_at(pope_square)
+        if piece is not None and piece.piece_type == chess.BISHOP:
+            for dest in rules.offset_squares(pope_square, rules.KING_STEP_OFFSETS):
+                target = board.piece_at(dest)
+                if target is not None and target.color == color:
+                    continue
+                if _move_keeps_king_safe(game, chess.Move(pope_square, dest), color):
+                    return pope_square, dest, False
 
     hydra_squares = game.white_hydra_squares if color == chess.WHITE else game.black_hydra_squares
     for hydra_square in hydra_squares:
@@ -524,8 +580,8 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
             if _move_keeps_king_safe(game, chess.Move(hydra_square, dest), color):
                 return hydra_square, dest, False
 
-    archer_squares = game.white_archer_squares if color == chess.WHITE else game.black_archer_squares
-    for archer_square in archer_squares:
+    archer_square = game.white_archer_square if color == chess.WHITE else game.black_archer_square
+    if archer_square is not None:
         for dest in rules.offset_squares(archer_square, rules.KING_STEP_OFFSETS):
             if board.piece_at(dest) is not None:  # move-only - never a capture, see execute_archer_move
                 continue
@@ -561,6 +617,26 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
                 if _move_keeps_king_safe(game, chess.Move(mirror_square, dest), color):
                     return mirror_square, dest, False
 
+    if pope_square is not None:
+        cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
+        for pawn_square in board.pieces(chess.PAWN, color):
+            if pawn_square in cyclops_squares or not rules.is_within_pope_aura(pope_square, pawn_square):
+                continue
+            forward = rules.pope_boosted_forward_square(pawn_square, color)
+            if forward is not None and board.piece_at(forward) is None:
+                one_ahead_rank = chess.square_rank(pawn_square) + (1 if color == chess.WHITE else -1)
+                one_ahead = chess.square(chess.square_file(pawn_square), one_ahead_rank)
+                if board.piece_at(one_ahead) is None and _move_keeps_king_safe(
+                    game, chess.Move(pawn_square, forward), color
+                ):
+                    return pawn_square, forward, False
+            for dest in rules.pope_boosted_diagonal_capture_squares(pawn_square, color):
+                target = board.piece_at(dest)
+                if target is None or target.color == color or target.piece_type == chess.KING:
+                    continue
+                if _move_keeps_king_safe(game, chess.Move(pawn_square, dest), color):
+                    return pawn_square, dest, False
+
     return None
 
 
@@ -588,12 +664,12 @@ def _piece_letter_or_none(piece_type: Optional[chess.PieceType]) -> Optional[str
 
 def _evolution_snapshot_to_model(snapshot: dict) -> EvolutionSnapshot:
     return EvolutionSnapshot(
-        white_dragon_square=_square_name_or_none(snapshot["white_dragon_square"]),
-        black_dragon_square=_square_name_or_none(snapshot["black_dragon_square"]),
-        white_wizard_squares=_square_names(snapshot["white_wizard_squares"]),
-        black_wizard_squares=_square_names(snapshot["black_wizard_squares"]),
-        white_archer_squares=_square_names(snapshot["white_archer_squares"]),
-        black_archer_squares=_square_names(snapshot["black_archer_squares"]),
+        white_dragon_squares=_square_names(snapshot["white_dragon_squares"]),
+        black_dragon_squares=_square_names(snapshot["black_dragon_squares"]),
+        white_pope_square=_square_name_or_none(snapshot["white_pope_square"]),
+        black_pope_square=_square_name_or_none(snapshot["black_pope_square"]),
+        white_archer_square=_square_name_or_none(snapshot["white_archer_square"]),
+        black_archer_square=_square_name_or_none(snapshot["black_archer_square"]),
         white_hydra_squares=_square_names(snapshot["white_hydra_squares"]),
         black_hydra_squares=_square_names(snapshot["black_hydra_squares"]),
         white_cyclops_squares=_square_names(snapshot["white_cyclops_squares"]),
@@ -610,12 +686,12 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         turn="white" if game.board.turn == chess.WHITE else "black",
         status=game.status,
         vs_ai=game.vs_ai,
-        white_dragon_square=_square_name_or_none(game.white_dragon_square),
-        black_dragon_square=_square_name_or_none(game.black_dragon_square),
-        white_wizard_squares=_square_names(game.white_wizard_squares),
-        black_wizard_squares=_square_names(game.black_wizard_squares),
-        white_archer_squares=_square_names(game.white_archer_squares),
-        black_archer_squares=_square_names(game.black_archer_squares),
+        white_dragon_squares=_square_names(game.white_dragon_squares),
+        black_dragon_squares=_square_names(game.black_dragon_squares),
+        white_pope_square=_square_name_or_none(game.white_pope_square),
+        black_pope_square=_square_name_or_none(game.black_pope_square),
+        white_archer_square=_square_name_or_none(game.white_archer_square),
+        black_archer_square=_square_name_or_none(game.black_archer_square),
         white_hydra_squares=_square_names(game.white_hydra_squares),
         black_hydra_squares=_square_names(game.black_hydra_squares),
         white_cyclops_squares=_square_names(game.white_cyclops_squares),
@@ -639,34 +715,34 @@ def _update_dragon_tracking(
     from_square: chess.Square,
     to_square: chess.Square,
 ) -> None:
-    if mover_color == chess.WHITE and game.white_dragon_square == from_square:
-        game.white_dragon_square = to_square
-    elif mover_color == chess.BLACK and game.black_dragon_square == from_square:
-        game.black_dragon_square = to_square
-
-    # Any move (not just a Dragon's own) can capture the opponent's Dragon.
-    opponent_is_white = mover_color != chess.WHITE
-    if opponent_is_white and game.white_dragon_square == to_square:
-        game.white_dragon_square = None
-    elif not opponent_is_white and game.black_dragon_square == to_square:
-        game.black_dragon_square = None
-
-
-def _update_wizard_tracking(
-    game: store.CustomGame,
-    mover_color: bool,
-    from_square: chess.Square,
-    to_square: chess.Square,
-) -> None:
-    mover_squares = game.white_wizard_squares if mover_color == chess.WHITE else game.black_wizard_squares
-    opponent_squares = game.black_wizard_squares if mover_color == chess.WHITE else game.white_wizard_squares
+    mover_squares = game.white_dragon_squares if mover_color == chess.WHITE else game.black_dragon_squares
+    opponent_squares = game.black_dragon_squares if mover_color == chess.WHITE else game.white_dragon_squares
 
     if from_square in mover_squares:
         mover_squares.discard(from_square)
         mover_squares.add(to_square)
 
-    # Any move (not just a Wizard's own) can capture an opponent's Wizard.
+    # Any move (not just a Dragon's own) can capture an opponent's Dragon.
     opponent_squares.discard(to_square)
+
+
+def _update_pope_tracking(
+    game: store.CustomGame,
+    mover_color: bool,
+    from_square: chess.Square,
+    to_square: chess.Square,
+) -> None:
+    if mover_color == chess.WHITE and game.white_pope_square == from_square:
+        game.white_pope_square = to_square
+    elif mover_color == chess.BLACK and game.black_pope_square == from_square:
+        game.black_pope_square = to_square
+
+    # Any move (not just a Pope's own) can capture the opponent's Pope.
+    opponent_is_white = mover_color != chess.WHITE
+    if opponent_is_white and game.white_pope_square == to_square:
+        game.white_pope_square = None
+    elif not opponent_is_white and game.black_pope_square == to_square:
+        game.black_pope_square = None
 
 
 def _update_archer_tracking(
@@ -676,16 +752,19 @@ def _update_archer_tracking(
     to_square: chess.Square,
     is_shoot: bool,
 ) -> None:
-    mover_squares = game.white_archer_squares if mover_color == chess.WHITE else game.black_archer_squares
-    opponent_squares = game.black_archer_squares if mover_color == chess.WHITE else game.white_archer_squares
+    if not is_shoot:
+        if mover_color == chess.WHITE and game.white_archer_square == from_square:
+            game.white_archer_square = to_square
+        elif mover_color == chess.BLACK and game.black_archer_square == from_square:
+            game.black_archer_square = to_square
 
-    if not is_shoot and from_square in mover_squares:
-        mover_squares.discard(from_square)
-        mover_squares.add(to_square)
-
-    # Covers a standard/Dragon/Wizard capture landing on an opposing Archer,
-    # or a shot destroying one in place - either way it stops being tracked.
-    opponent_squares.discard(to_square)
+    # Covers a standard/Dragon/Pope capture landing on an opposing Archer, or
+    # a shot destroying one in place - either way it stops being tracked.
+    opponent_is_white = mover_color != chess.WHITE
+    if opponent_is_white and game.white_archer_square == to_square:
+        game.white_archer_square = None
+    elif not opponent_is_white and game.black_archer_square == to_square:
+        game.black_archer_square = None
 
 
 def _update_hydra_tracking(game: store.CustomGame, mover_color: bool, from_square: chess.Square, to_square: chess.Square) -> None:
@@ -741,19 +820,21 @@ def _apply_move(
     to_square_str: str,
     promotion: Optional[chess.PieceType] = None,
 ) -> str:
-    """Executes one move (Wizard / Dragon / Archer shoot / Archer move /
-    standard, in that priority order) and returns the action-log entry for
-    it. Raises HTTPException or rules.IllegalMoveError on invalid input."""
+    """Executes one move (Pope / Dragon / Archer shoot / Archer move / Hydra /
+    Cyclops / Mirror / boosted-Pawn / standard, in that priority order) and
+    returns the action-log entry for it. Raises HTTPException or
+    rules.IllegalMoveError on invalid input."""
     board = game.board
 
-    dragon_square = game.white_dragon_square if mover_color == chess.WHITE else game.black_dragon_square
-    wizard_squares = game.white_wizard_squares if mover_color == chess.WHITE else game.black_wizard_squares
-    archer_squares = game.white_archer_squares if mover_color == chess.WHITE else game.black_archer_squares
+    dragon_squares = game.white_dragon_squares if mover_color == chess.WHITE else game.black_dragon_squares
+    pope_square = game.white_pope_square if mover_color == chess.WHITE else game.black_pope_square
+    archer_square = game.white_archer_square if mover_color == chess.WHITE else game.black_archer_square
     hydra_squares = game.white_hydra_squares if mover_color == chess.WHITE else game.black_hydra_squares
     cyclops_squares = game.white_cyclops_squares if mover_color == chess.WHITE else game.black_cyclops_squares
     mirror_squares = game.white_mirror_squares if mover_color == chess.WHITE else game.black_mirror_squares
-    is_wizard_move = from_square in wizard_squares
-    is_archer_move = from_square in archer_squares
+    is_dragon_move = from_square in dragon_squares
+    is_pope_move = pope_square == from_square
+    is_archer_move = archer_square == from_square
     is_hydra_move = from_square in hydra_squares
     is_cyclops_move = from_square in cyclops_squares
     is_mirror_move = from_square in mirror_squares
@@ -798,12 +879,12 @@ def _apply_move(
     # movement mode) can be rolled back below rather than left half-applied.
     board_before = board.copy(stack=False)
     tracking_before = (
-        game.white_dragon_square,
-        game.black_dragon_square,
-        set(game.white_wizard_squares),
-        set(game.black_wizard_squares),
-        set(game.white_archer_squares),
-        set(game.black_archer_squares),
+        set(game.white_dragon_squares),
+        set(game.black_dragon_squares),
+        game.white_pope_square,
+        game.black_pope_square,
+        game.white_archer_square,
+        game.black_archer_square,
         set(game.white_hydra_squares),
         set(game.black_hydra_squares),
         set(game.white_cyclops_squares),
@@ -821,10 +902,10 @@ def _apply_move(
             raise HTTPException(400, "Only an Archer can shoot")
         rules.execute_archer_shoot(board, move)
         log_entry = f"{from_square_str} shoots {to_square_str}"
-    elif is_wizard_move:
-        rules.execute_wizard_move(board, move)
-        log_entry = f"{from_square_str}-{to_square_str}: Wizard"
-    elif dragon_square == from_square:
+    elif is_pope_move:
+        rules.execute_pope_move(board, move)
+        log_entry = f"{from_square_str}-{to_square_str}: Pope"
+    elif is_dragon_move:
         rules.execute_dragon_move(board, move)
         log_entry = f"{from_square_str}-{to_square_str}: Dragon"
     elif is_hydra_move:
@@ -841,12 +922,19 @@ def _apply_move(
     elif is_archer_move:
         rules.execute_archer_move(board, move)
         log_entry = f"{from_square_str}-{to_square_str}"
+    elif piece_before is not None and piece_before.piece_type == chess.PAWN:
+        # Not a Cyclops (already handled above) - a plain Pawn, possibly
+        # boosted by a nearby allied Pope's aura. execute_boosted_pawn_move
+        # tries a normal pseudo-legal Pawn move first, so this is safe to
+        # call unconditionally for every plain Pawn move.
+        rules.execute_boosted_pawn_move(board, move, pope_square)
+        log_entry = f"{from_square_str}-{to_square_str}"
     else:
         rules.execute_standard_move(board, move)
         log_entry = f"{from_square_str}-{to_square_str}"
 
     _update_dragon_tracking(game, mover_color, from_square, to_square)
-    _update_wizard_tracking(game, mover_color, from_square, to_square)
+    _update_pope_tracking(game, mover_color, from_square, to_square)
     _update_archer_tracking(game, mover_color, from_square, to_square, shoot)
     _update_hydra_tracking(game, mover_color, from_square, to_square)
     _update_cyclops_tracking(game, mover_color, from_square, to_square)
@@ -856,12 +944,12 @@ def _apply_move(
     if _in_check(game, mover_color):
         game.board = board_before
         (
-            game.white_dragon_square,
-            game.black_dragon_square,
-            game.white_wizard_squares,
-            game.black_wizard_squares,
-            game.white_archer_squares,
-            game.black_archer_squares,
+            game.white_dragon_squares,
+            game.black_dragon_squares,
+            game.white_pope_square,
+            game.black_pope_square,
+            game.white_archer_square,
+            game.black_archer_square,
             game.white_hydra_squares,
             game.black_hydra_squares,
             game.white_cyclops_squares,
@@ -894,10 +982,10 @@ def _build_game_from_setup(payload: CustomSetupRequest, enforce_points_budget: b
     if black_back_rank is None:
         black_back_rank = _standard_back_rank("8")
 
-    # A hero's draft letter (Archer "A", Hydra "H", Cyclops "C", Mirror "M")
+    # A hero's draft letter (Dragon "D", Hydra "H", Cyclops "C", Mirror "M")
     # isn't a real FEN piece letter - each is stored as the closest real
-    # type, same idea as the Dragon's evolution slot always holding "N" for
-    # a piece that's actually a Rook underneath. Translate before build_fen,
+    # type, same idea as the Knight evolution slot always holding "N" for a
+    # piece that's actually an Archer underneath. Translate before build_fen,
     # then recover the original squares for each afterwards.
     translated_white_back_rank = _translate_hero_letters(payload.white_back_rank)
 
@@ -920,13 +1008,16 @@ def _build_game_from_setup(payload: CustomSetupRequest, enforce_points_budget: b
             "That setup produces an illegal position (e.g. a king already in check) - " f"status flags: {remaining_status!r}",
         )
 
-    white_archer_squares = _collect_hero_squares(payload.white_back_rank, "A")
+    white_dragon_squares = _collect_hero_squares(payload.white_back_rank, "D")
     white_hydra_squares = _collect_hero_squares(payload.white_back_rank, "H")
     white_cyclops_squares = _collect_hero_squares(payload.white_back_rank, "C")
     white_mirror_squares = _collect_hero_squares(payload.white_back_rank, "M")
 
-    white_dragon_square: Optional[chess.Square] = None
-    white_wizard_squares: set[chess.Square] = set()
+    # A Knight's evolution slot swaps in the closest real stored type for a
+    # piece that's actually an Archer (still stored as a Knight - no board
+    # swap needed, unlike the Dragon's own draft-letter translation above).
+    white_archer_square: Optional[chess.Square] = None
+    white_pope_square: Optional[chess.Square] = None
     for raw_evolved_square in payload.white_evolved_squares:
         evolved_str = raw_evolved_square.strip().lower()
         try:
@@ -936,20 +1027,21 @@ def _build_game_from_setup(payload: CustomSetupRequest, enforce_points_budget: b
         evolved_letter = payload.white_back_rank.get(evolved_str, "").strip().upper()
 
         if evolved_letter == "N":
-            # A Knight's evolution only ever produces one Dragon - if more
+            # A Knight's evolution only ever produces one Archer - if more
             # than one Knight square is given, the last one wins.
-            white_dragon_square = evolved_square
-            board.set_piece_at(white_dragon_square, chess.Piece(chess.ROOK, chess.WHITE))
+            white_archer_square = evolved_square  # already a Knight in the FEN - no swap needed
         elif evolved_letter == "B":
-            white_wizard_squares.add(evolved_square)  # already a Bishop in the FEN - no swap needed
+            # A Bishop's evolution only ever produces one Pope - if more
+            # than one Bishop square is given, the last one wins.
+            white_pope_square = evolved_square  # already a Bishop in the FEN - no swap needed
         else:
             raise HTTPException(400, f"The evolving square ({evolved_str}) must contain a Knight or Bishop to evolve")
 
     return store.create_game(
         board,
-        white_dragon_square=white_dragon_square,
-        white_wizard_squares=white_wizard_squares,
-        white_archer_squares=white_archer_squares,
+        white_dragon_squares=white_dragon_squares,
+        white_pope_square=white_pope_square,
+        white_archer_square=white_archer_square,
         white_hydra_squares=white_hydra_squares,
         white_cyclops_squares=white_cyclops_squares,
         white_mirror_squares=white_mirror_squares,
@@ -984,12 +1076,13 @@ def _collect_hero_squares(back_rank: dict[str, str], letter: str) -> set[chess.S
 
 def _resolve_evolution(
     board: chess.Board, back_rank: dict[str, str], evolved_squares: list[str], color: chess.Color
-) -> tuple[Optional[chess.Square], set[chess.Square]]:
-    """Returns (dragon_square, wizard_squares) for one side, swapping a
-    Dragon's evolution-slot Knight into a Rook on `board` in place (a Wizard
-    needs no swap - a Bishop is already its native storage type)."""
-    dragon_square: Optional[chess.Square] = None
-    wizard_squares: set[chess.Square] = set()
+) -> tuple[Optional[chess.Square], Optional[chess.Square]]:
+    """Returns (archer_square, pope_square) for one side - neither needs a
+    board swap, since a Knight/Bishop is already the native storage type for
+    an Archer/Pope (unlike a directly-drafted Dragon's own translation, see
+    HERO_DRAFT_LETTER_TO_STORED)."""
+    archer_square: Optional[chess.Square] = None
+    pope_square: Optional[chess.Square] = None
     for raw_evolved_square in evolved_squares:
         evolved_str = raw_evolved_square.strip().lower()
         try:
@@ -999,15 +1092,16 @@ def _resolve_evolution(
         evolved_letter = back_rank.get(evolved_str, "").strip().upper()
 
         if evolved_letter == "N":
-            # A Knight's evolution only ever produces one Dragon - if more
+            # A Knight's evolution only ever produces one Archer - if more
             # than one Knight square is given, the last one wins.
-            dragon_square = evolved_square
-            board.set_piece_at(dragon_square, chess.Piece(chess.ROOK, color))
+            archer_square = evolved_square
         elif evolved_letter == "B":
-            wizard_squares.add(evolved_square)
+            # A Bishop's evolution only ever produces one Pope - if more
+            # than one Bishop square is given, the last one wins.
+            pope_square = evolved_square
         else:
             raise HTTPException(400, f"The evolving square ({evolved_str}) must contain a Knight or Bishop to evolve")
-    return dragon_square, wizard_squares
+    return archer_square, pope_square
 
 
 def _build_game_from_two_decks(
@@ -1038,17 +1132,17 @@ def _build_game_from_two_decks(
             "That setup produces an illegal position (e.g. a king already in check) - " f"status flags: {remaining_status!r}",
         )
 
-    white_dragon_square, white_wizard_squares = _resolve_evolution(board, white_back_rank, white_evolved_squares, chess.WHITE)
-    black_dragon_square, black_wizard_squares = _resolve_evolution(board, black_back_rank, black_evolved_squares, chess.BLACK)
+    white_archer_square, white_pope_square = _resolve_evolution(board, white_back_rank, white_evolved_squares, chess.WHITE)
+    black_archer_square, black_pope_square = _resolve_evolution(board, black_back_rank, black_evolved_squares, chess.BLACK)
 
     return store.create_game(
         board,
-        white_dragon_square=white_dragon_square,
-        black_dragon_square=black_dragon_square,
-        white_wizard_squares=white_wizard_squares,
-        black_wizard_squares=black_wizard_squares,
-        white_archer_squares=_collect_hero_squares(white_back_rank, "A"),
-        black_archer_squares=_collect_hero_squares(black_back_rank, "A"),
+        white_dragon_squares=_collect_hero_squares(white_back_rank, "D"),
+        black_dragon_squares=_collect_hero_squares(black_back_rank, "D"),
+        white_pope_square=white_pope_square,
+        black_pope_square=black_pope_square,
+        white_archer_square=white_archer_square,
+        black_archer_square=black_archer_square,
         white_hydra_squares=_collect_hero_squares(white_back_rank, "H"),
         black_hydra_squares=_collect_hero_squares(black_back_rank, "H"),
         white_cyclops_squares=_collect_hero_squares(white_back_rank, "C"),
@@ -1128,7 +1222,7 @@ def custom_ai_move(game_id: str):
         raise HTTPException(400, "It's not the AI's turn")
 
     # Stockfish only ever reasons about the position's FEN, so it has no idea
-    # a player's Dragon/Wizard/Archer is threatening its king via an extra
+    # a player's Dragon/Pope/Archer is threatening its king via an extra
     # movement mode it can't see (see _extra_threat_squares) - its "best"
     # move can therefore turn out to be one _apply_move correctly rejects for
     # ignoring that check. Seed the exclusion set with every standard move

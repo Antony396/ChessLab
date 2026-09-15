@@ -99,14 +99,20 @@ def test_evolution_history_tracks_a_dragon_across_a_knight_shape_move(client):
     # into their base type, which is confusing" - evolution_history must
     # track exactly where the Dragon was at each point, same indexing as
     # fen_history, so the frontend can render a reviewed position with the
-    # right hero art instead of a plain base-type fallback.
-    game = _setup_game(client, white_evolved_squares=["b1"])
+    # right hero art instead of a plain base-type fallback. A Dragon is
+    # drafted directly now (letter "D"), not evolved from a Knight.
+    resp = client.post(
+        "/api/game/custom-setup",
+        json={"white_back_rank": {"e1": "K", "b1": "D"}, "vs_ai": False},
+    )
+    assert resp.status_code == 200
+    game = resp.json()
     game_id = game["id"]
-    assert game["white_dragon_square"] == "b1"
+    assert game["white_dragon_squares"] == ["b1"]
     assert game["evolution_history"] == [{
-        "white_dragon_square": "b1", "black_dragon_square": None,
-        "white_wizard_squares": [], "black_wizard_squares": [],
-        "white_archer_squares": [], "black_archer_squares": [],
+        "white_dragon_squares": ["b1"], "black_dragon_squares": [],
+        "white_pope_square": None, "black_pope_square": None,
+        "white_archer_square": None, "black_archer_square": None,
         "white_hydra_squares": [], "black_hydra_squares": [],
         "white_cyclops_squares": [], "black_cyclops_squares": [],
         "white_mirror_squares": [], "black_mirror_squares": [],
@@ -115,10 +121,10 @@ def test_evolution_history_tracks_a_dragon_across_a_knight_shape_move(client):
     after_hop = client.post(
         "/api/game/custom-move", json={"game_id": game_id, "from_square": "b1", "to_square": "c3"}
     ).json()
-    assert after_hop["white_dragon_square"] == "c3"
+    assert after_hop["white_dragon_squares"] == ["c3"]
     assert len(after_hop["evolution_history"]) == 2
-    assert after_hop["evolution_history"][0]["white_dragon_square"] == "b1"  # unchanged - the OLD position
-    assert after_hop["evolution_history"][1]["white_dragon_square"] == "c3"  # the new position
+    assert after_hop["evolution_history"][0]["white_dragon_squares"] == ["b1"]  # unchanged - the OLD position
+    assert after_hop["evolution_history"][1]["white_dragon_squares"] == ["c3"]  # the new position
 
 
 def test_standard_move_rejects_illegal_move(client):
@@ -131,14 +137,14 @@ def test_standard_move_rejects_illegal_move(client):
 
 
 # These three build the CustomGame directly (rather than via /custom-setup,
-# which only ever places pieces on ranks 1/8/2/7) so the Archer/Wizard
+# which only ever places pieces on ranks 1/8/2/7) so the Archer/Pope
 # destinations used below - free of the fixed pawn rows - actually exist;
 # same reasoning as _make_game in test_promotion_and_dragon_checkmate.py.
 
 
 def test_archer_move_via_api_relocates_one_square(client):
     board = chess.Board(fen="4k3/8/8/8/8/8/8/1N2K3 w - - 0 1")
-    game = store.create_game(board, white_archer_squares={chess.B1}, vs_ai=False)
+    game = store.create_game(board, white_archer_square=chess.B1, vs_ai=False)
 
     resp = client.post(
         "/api/game/custom-move",
@@ -146,12 +152,12 @@ def test_archer_move_via_api_relocates_one_square(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["white_archer_squares"] == ["c1"]
+    assert body["white_archer_square"] == "c1"
 
 
 def test_archer_relocate_via_api_rejects_the_l_shaped_knight_move(client):
     board = chess.Board(fen="4k3/8/8/8/8/8/8/1N2K3 w - - 0 1")
-    game = store.create_game(board, white_archer_squares={chess.B1}, vs_ai=False)
+    game = store.create_game(board, white_archer_square=chess.B1, vs_ai=False)
 
     resp = client.post(
         "/api/game/custom-move",
@@ -162,7 +168,7 @@ def test_archer_relocate_via_api_rejects_the_l_shaped_knight_move(client):
 
 def test_archer_shoot_via_api_destroys_target_and_passes_turn(client):
     board = chess.Board(fen="4k3/8/8/8/8/3n4/1N6/4K3 w - - 0 1")
-    game = store.create_game(board, white_archer_squares={chess.B2}, vs_ai=False)
+    game = store.create_game(board, white_archer_square=chess.B2, vs_ai=False)
 
     resp = client.post(
         "/api/game/custom-move",
@@ -171,16 +177,16 @@ def test_archer_shoot_via_api_destroys_target_and_passes_turn(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["turn"] == "black"
-    assert body["white_archer_squares"] == ["b2"]  # archer didn't move
+    assert body["white_archer_square"] == "b2"  # archer didn't move
     assert chess.Board(body["fen"]).piece_at(chess.D3) is None
     assert "shoots" in body["action_log"][0]
 
 
-def test_wizard_move_via_api_can_use_king_step_shape(client):
+def test_pope_move_via_api_can_use_king_step_shape(client):
     # c1-b1 isn't a diagonal, so this only succeeds if the API actually
-    # falls through to king-step legality for the Wizard.
+    # falls through to king-step legality for the Pope.
     board = chess.Board(fen="4k3/8/8/8/8/8/8/K1B5 w - - 0 1")
-    game = store.create_game(board, white_wizard_squares={chess.C1}, vs_ai=False)
+    game = store.create_game(board, white_pope_square=chess.C1, vs_ai=False)
 
     resp = client.post(
         "/api/game/custom-move",
@@ -188,11 +194,13 @@ def test_wizard_move_via_api_can_use_king_step_shape(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert "Wizard" in body["action_log"][0]
-    assert body["white_wizard_squares"] == ["b1"]
+    assert "Pope" in body["action_log"][0]
+    assert body["white_pope_square"] == "b1"
 
 
-def test_bishop_evolution_can_produce_two_wizards_via_setup_api(client):
+def test_bishop_evolution_produces_only_one_pope_via_setup_api(client):
+    # More than one Bishop square given - only the last one wins, unlike the
+    # old Wizard's evolution which produced one per given square.
     back_rank = {"e1": "K", "c1": "B", "f1": "B"}
     resp = client.post(
         "/api/game/custom-setup",
@@ -200,7 +208,7 @@ def test_bishop_evolution_can_produce_two_wizards_via_setup_api(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["white_wizard_squares"] == ["c1", "f1"]
+    assert body["white_pope_square"] == "f1"
     board = chess.Board(body["fen"])
     assert board.piece_at(chess.C1) == chess.Piece(chess.BISHOP, chess.WHITE)
     assert board.piece_at(chess.F1) == chess.Piece(chess.BISHOP, chess.WHITE)

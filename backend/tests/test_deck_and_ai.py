@@ -40,7 +40,7 @@ def test_evolution_slot_requires_a_knight_or_bishop_there(client):
     assert "bishop" in resp.json()["detail"].lower()
 
 
-def test_evolution_slot_turns_knight_into_a_tracked_dragon(client):
+def test_evolution_slot_turns_knight_into_a_tracked_archer(client):
     back_rank = {"a1": "R", "b1": "N", "e1": "K"}
     resp = client.post(
         "/api/game/custom-setup",
@@ -48,16 +48,16 @@ def test_evolution_slot_turns_knight_into_a_tracked_dragon(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["white_dragon_square"] == "b1"
-    # the FEN must show a Rook (R) on b1, not a Knight, since python-chess
-    # needs a real piece type it understands for rook-line legality/checks
+    assert body["white_archer_square"] == "b1"
+    # the FEN keeps a Knight (N) on b1 - an Archer's native storage type IS
+    # a Knight, so no piece-type swap is needed (unlike a drafted Dragon).
     import chess
 
     board = chess.Board(body["fen"])
-    assert board.piece_at(chess.B1) == chess.Piece(chess.ROOK, chess.WHITE)
+    assert board.piece_at(chess.B1) == chess.Piece(chess.KNIGHT, chess.WHITE)
 
 
-def test_evolution_slot_turns_bishop_into_a_tracked_wizard(client):
+def test_evolution_slot_turns_bishop_into_a_tracked_pope(client):
     back_rank = {"a1": "R", "c1": "B", "e1": "K"}
     resp = client.post(
         "/api/game/custom-setup",
@@ -65,28 +65,28 @@ def test_evolution_slot_turns_bishop_into_a_tracked_wizard(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["white_wizard_squares"] == ["c1"]
-    # the FEN keeps a Bishop (B) on c1 - unlike the Dragon, no piece-type
-    # swap is needed since a Wizard's native storage type IS a Bishop.
+    assert body["white_pope_square"] == "c1"
+    # the FEN keeps a Bishop (B) on c1 - a Pope's native storage type IS a
+    # Bishop, so no piece-type swap is needed.
     import chess
 
     board = chess.Board(body["fen"])
     assert board.piece_at(chess.C1) == chess.Piece(chess.BISHOP, chess.WHITE)
 
 
-def test_setup_tracks_archer_squares_from_the_back_rank(client):
-    back_rank = {"a1": "R", "b1": "A", "g1": "A", "e1": "K"}
+def test_setup_tracks_dragon_squares_from_the_back_rank(client):
+    back_rank = {"a1": "R", "b1": "D", "g1": "D", "e1": "K"}
     resp = client.post("/api/game/custom-setup", json={"white_back_rank": back_rank})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["white_archer_squares"] == ["b1", "g1"]
-    # the FEN must show a Knight (N) on each Archer square, since python-chess
+    assert body["white_dragon_squares"] == ["b1", "g1"]
+    # the FEN must show a Rook (R) on each Dragon square, since python-chess
     # needs a real piece type it understands
     import chess
 
     board = chess.Board(body["fen"])
-    assert board.piece_at(chess.B1) == chess.Piece(chess.KNIGHT, chess.WHITE)
-    assert board.piece_at(chess.G1) == chess.Piece(chess.KNIGHT, chess.WHITE)
+    assert board.piece_at(chess.B1) == chess.Piece(chess.ROOK, chess.WHITE)
+    assert board.piece_at(chess.G1) == chess.Piece(chess.ROOK, chess.WHITE)
 
 
 def test_setup_allows_an_extra_pawn_on_the_back_rank(client):
@@ -155,11 +155,12 @@ def test_ai_move_endpoint_still_works_after_a_knight_shaped_dragon_move(client):
     # stack, and a knight-shaped Dragon hop isn't a legal move for whatever
     # Stockfish thinks occupies that square (a plain Rook) - replaying it
     # used to desync the engine and produce garbage. vs_ai=True here is the
-    # point of the test.
-    back_rank = {"a1": "K", "b1": "N"}
+    # point of the test. A Dragon is drafted directly now (letter "D"),
+    # rather than evolved from a Knight.
+    back_rank = {"a1": "K", "b1": "D"}
     resp = client.post(
         "/api/game/custom-setup",
-        json={"white_back_rank": back_rank, "white_evolved_squares": ["b1"]},
+        json={"white_back_rank": back_rank},
     )
     assert resp.status_code == 200
     game_id = resp.json()["id"]
@@ -183,13 +184,13 @@ def test_dragon_move_via_api_can_use_knight_shape(client):
     # b1-c3 isn't a rook-line move at all, so this only succeeds if the API
     # actually falls through to knight-shaped legality for the Dragon -
     # proves the whole request/response path wires Dragon movement through
-    # correctly, not just the direct rules-level unit test.
-    back_rank = {"a1": "K", "b1": "N"}
+    # correctly, not just the direct rules-level unit test. A Dragon is
+    # drafted directly (letter "D"), like the Hydra/Cyclops/Mirror.
+    back_rank = {"a1": "K", "b1": "D"}
     resp = client.post(
         "/api/game/custom-setup",
         json={
             "white_back_rank": back_rank,
-            "white_evolved_squares": ["b1"],
             "vs_ai": False,  # keep this deterministic - no AI reply to account for
         },
     )
@@ -203,4 +204,4 @@ def test_dragon_move_via_api_can_use_knight_shape(client):
     assert resp.status_code == 200
     body = resp.json()
     assert "Dragon" in body["action_log"][0]
-    assert body["white_dragon_square"] == "c3"
+    assert body["white_dragon_squares"] == ["c3"]

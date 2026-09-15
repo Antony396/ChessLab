@@ -1,6 +1,6 @@
 import chess
 
-from app.api.custom_game_routes import _archer_has_escape, _compute_status, _wizard_has_king_step_move
+from app.api.custom_game_routes import _archer_has_escape, _compute_status, _pope_has_king_step_move
 from app.custom_chess.store import CustomGame
 
 
@@ -14,29 +14,30 @@ def _make_game(fen: str, **squares) -> CustomGame:
 # reaches g1.
 
 
-def test_wizard_king_step_escape_detected_directly():
+def test_pope_king_step_escape_detected_directly():
     # f1-g1 is horizontal, not diagonal - a real Bishop has no way to reach
-    # it, but the Wizard's king-step mode does, capturing the queen.
-    game = _make_game("k7/b7/8/8/8/8/6PP/5BqK w - - 0 1", white_wizard_squares={chess.F1})
+    # it, but the Pope's king-step mode does, capturing the queen.
+    game = _make_game("k7/b7/8/8/8/8/6PP/5BqK w - - 0 1", white_pope_square=chess.F1)
     assert game.board.is_checkmate()  # confirms python-chess is fooled - it only sees the Bishop's diagonals
-    assert _wizard_has_king_step_move(game, chess.F1) is True
+    assert _pope_has_king_step_move(game, chess.F1) is True
 
 
-def test_wizard_king_step_escape_false_when_none_exists():
-    # Same shape, but the Wizard is on a3 where neither its diagonals nor a
-    # king-step reach g1 or otherwise resolve the check - a genuine mate.
-    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", white_wizard_squares={chess.A3})
+def test_pope_king_step_escape_false_when_none_exists():
+    # Same shape, but the Pope is on a3 where neither a diagonal (it has
+    # none) nor a king-step reach g1 or otherwise resolve the check - a
+    # genuine mate.
+    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", white_pope_square=chess.A3)
     assert game.board.is_checkmate()
-    assert _wizard_has_king_step_move(game, chess.A3) is False
+    assert _pope_has_king_step_move(game, chess.A3) is False
 
 
-def test_compute_status_not_checkmate_when_wizard_can_escape():
-    game = _make_game("k7/b7/8/8/8/8/6PP/5BqK w - - 0 1", white_wizard_squares={chess.F1})
+def test_compute_status_not_checkmate_when_pope_can_escape():
+    game = _make_game("k7/b7/8/8/8/8/6PP/5BqK w - - 0 1", white_pope_square=chess.F1)
     assert _compute_status(game) == "in_progress"
 
 
-def test_compute_status_is_checkmate_when_wizard_cannot_escape():
-    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", white_wizard_squares={chess.A3})
+def test_compute_status_is_checkmate_when_pope_cannot_escape():
+    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", white_pope_square=chess.A3)
     assert _compute_status(game) == "checkmate"
 
 
@@ -49,7 +50,7 @@ def test_compute_status_is_checkmate_when_wizard_cannot_escape():
 
 
 def test_archer_shoot_escape_detected_directly():
-    game = _make_game("k7/b7/8/8/8/5N2/6PP/6qK w - - 0 1", white_archer_squares={chess.F3})
+    game = _make_game("k7/b7/8/8/8/5N2/6PP/6qK w - - 0 1", white_archer_square=chess.F3)
     board = game.board
     assert board.is_checkmate() is False  # python-chess sees SOME move here...
     assert any(m.from_square == chess.F3 for m in board.legal_moves)  # ...but only the phantom relocate
@@ -59,23 +60,23 @@ def test_archer_shoot_escape_detected_directly():
 def test_archer_escape_false_when_none_exists():
     # Same shape, but the Archer is on a3, where neither a king-step nor a
     # knight's-move shot reaches g1 or otherwise resolves the check.
-    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", white_archer_squares={chess.A3})
+    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", white_archer_square=chess.A3)
     assert _archer_has_escape(game.board, game, chess.A3, chess.WHITE) is False
 
 
 def test_compute_status_not_checkmate_when_archer_can_shoot_the_checker():
-    game = _make_game("k7/b7/8/8/8/5N2/6PP/6qK w - - 0 1", white_archer_squares={chess.F3})
+    game = _make_game("k7/b7/8/8/8/5N2/6PP/6qK w - - 0 1", white_archer_square=chess.F3)
     assert _compute_status(game) == "in_progress"
 
 
 def test_compute_status_is_checkmate_when_archer_cannot_escape():
-    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", white_archer_squares={chess.A3})
+    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", white_archer_square=chess.A3)
     assert _compute_status(game) == "checkmate"
 
 
 def test_compute_status_ignores_evolved_pieces_belonging_to_the_side_not_in_trouble():
     # The escape hatches must only apply to the side actually to move.
-    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", black_wizard_squares={chess.A3})
+    game = _make_game("k7/b7/8/8/8/B7/6PP/6qK w - - 0 1", black_pope_square=chess.A3)
     assert _compute_status(game) == "checkmate"
-    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", black_archer_squares={chess.A3})
+    game = _make_game("k7/b7/8/8/8/N7/6PP/6qK w - - 0 1", black_archer_square=chess.A3)
     assert _compute_status(game) == "checkmate"

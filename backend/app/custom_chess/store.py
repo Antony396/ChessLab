@@ -19,16 +19,18 @@ import chess
 class CustomGame:
     id: str
     board: chess.Board
-    white_dragon_square: Optional[chess.Square] = None
-    black_dragon_square: Optional[chess.Square] = None
-    # A Wizard evolution can produce more than one at once (the Bishop
-    # evolution makes 2), unlike the Dragon's single evolution slot - so
-    # these are sets, mirroring the Archer's own multi-instance tracking.
-    white_wizard_squares: set[chess.Square] = field(default_factory=set)
-    black_wizard_squares: set[chess.Square] = field(default_factory=set)
-    white_archer_squares: set[chess.Square] = field(default_factory=set)
-    black_archer_squares: set[chess.Square] = field(default_factory=set)
-    # Hydra/Cyclops/Mirror are drafted directly (like the Archer), not
+    # A Dragon is drafted directly now (like Hydra/Cyclops/Mirror), so - like
+    # them - there can be more than one at once, hence a set.
+    white_dragon_squares: set[chess.Square] = field(default_factory=set)
+    black_dragon_squares: set[chess.Square] = field(default_factory=set)
+    # The Bishop evolution slot produces at most one Pope, and the Knight
+    # evolution slot produces at most one Archer - both singular, unlike the
+    # directly-drafted heroes below.
+    white_pope_square: Optional[chess.Square] = None
+    black_pope_square: Optional[chess.Square] = None
+    white_archer_square: Optional[chess.Square] = None
+    black_archer_square: Optional[chess.Square] = None
+    # Hydra/Cyclops/Mirror are drafted directly (like the Dragon), not
     # evolved from another piece, so each just needs its own tracked-squares
     # set the same way.
     white_hydra_squares: set[chess.Square] = field(default_factory=set)
@@ -132,15 +134,15 @@ def snapshot_evolution(game: CustomGame) -> dict:
     """A plain dict copy of every evolution-tracking field on `game` right
     now - see CustomGame.evolution_history for why. Squares are copied by
     value (a fresh set, not the same set object) so a later in-place mutation
-    of game.white_wizard_squares (etc.) can never silently rewrite a past
+    of game.white_dragon_squares (etc.) can never silently rewrite a past
     snapshot too."""
     return {
-        "white_dragon_square": game.white_dragon_square,
-        "black_dragon_square": game.black_dragon_square,
-        "white_wizard_squares": set(game.white_wizard_squares),
-        "black_wizard_squares": set(game.black_wizard_squares),
-        "white_archer_squares": set(game.white_archer_squares),
-        "black_archer_squares": set(game.black_archer_squares),
+        "white_dragon_squares": set(game.white_dragon_squares),
+        "black_dragon_squares": set(game.black_dragon_squares),
+        "white_pope_square": game.white_pope_square,
+        "black_pope_square": game.black_pope_square,
+        "white_archer_square": game.white_archer_square,
+        "black_archer_square": game.black_archer_square,
         "white_hydra_squares": set(game.white_hydra_squares),
         "black_hydra_squares": set(game.black_hydra_squares),
         "white_cyclops_squares": set(game.white_cyclops_squares),
@@ -152,12 +154,12 @@ def snapshot_evolution(game: CustomGame) -> dict:
 
 def create_game(
     board: chess.Board,
-    white_dragon_square: Optional[chess.Square] = None,
-    black_dragon_square: Optional[chess.Square] = None,
-    white_wizard_squares: Optional[set[chess.Square]] = None,
-    black_wizard_squares: Optional[set[chess.Square]] = None,
-    white_archer_squares: Optional[set[chess.Square]] = None,
-    black_archer_squares: Optional[set[chess.Square]] = None,
+    white_dragon_squares: Optional[set[chess.Square]] = None,
+    black_dragon_squares: Optional[set[chess.Square]] = None,
+    white_pope_square: Optional[chess.Square] = None,
+    black_pope_square: Optional[chess.Square] = None,
+    white_archer_square: Optional[chess.Square] = None,
+    black_archer_square: Optional[chess.Square] = None,
     white_hydra_squares: Optional[set[chess.Square]] = None,
     black_hydra_squares: Optional[set[chess.Square]] = None,
     white_cyclops_squares: Optional[set[chess.Square]] = None,
@@ -169,12 +171,12 @@ def create_game(
     game = CustomGame(
         id=uuid.uuid4().hex,
         board=board,
-        white_dragon_square=white_dragon_square,
-        black_dragon_square=black_dragon_square,
-        white_wizard_squares=white_wizard_squares or set(),
-        black_wizard_squares=black_wizard_squares or set(),
-        white_archer_squares=white_archer_squares or set(),
-        black_archer_squares=black_archer_squares or set(),
+        white_dragon_squares=white_dragon_squares or set(),
+        black_dragon_squares=black_dragon_squares or set(),
+        white_pope_square=white_pope_square,
+        black_pope_square=black_pope_square,
+        white_archer_square=white_archer_square,
+        black_archer_square=black_archer_square,
         white_hydra_squares=white_hydra_squares or set(),
         black_hydra_squares=black_hydra_squares or set(),
         white_cyclops_squares=white_cyclops_squares or set(),

@@ -46,14 +46,14 @@ def test_online_join_lets_black_draft_a_real_deck_too(client):
     joined = _join_room(
         client,
         room["room_id"],
-        black_back_rank={"e8": "K", "b8": "A", "g8": "A"},
+        black_back_rank={"e8": "K", "b8": "D", "g8": "D"},
     )
-    assert joined["black_archer_squares"] == ["b8", "g8"]
+    assert joined["black_dragon_squares"] == ["b8", "g8"]
     import chess
 
     board = chess.Board(joined["fen"])
-    assert board.piece_at(chess.B8) == chess.Piece(chess.KNIGHT, chess.BLACK)  # Archer stored as Knight
-    assert board.piece_at(chess.G8) == chess.Piece(chess.KNIGHT, chess.BLACK)
+    assert board.piece_at(chess.B8) == chess.Piece(chess.ROOK, chess.BLACK)  # Dragon stored as Rook
+    assert board.piece_at(chess.G8) == chess.Piece(chess.ROOK, chess.BLACK)
 
 
 def test_online_join_enforces_the_points_budget_on_black_too(client):

@@ -24,20 +24,27 @@ export const flat2dPieces = Object.fromEntries(
   ])
 );
 
-// A Dragon is stored as a Rook, a Wizard/Mirror as a Bishop, a Hydra/Archer
-// as a Knight, and a Cyclops as a Pawn in the FEN (python-chess needs a real
+// A Dragon is stored as a Rook, a Pope/Mirror as a Bishop, a Hydra/Archer as
+// a Knight, and a Cyclops as a Pawn in the FEN (python-chess needs a real
 // piece type it understands), so swapping in their art has to happen
 // per-square, not per-piece-type. react-chessboard passes `square` into
 // every piece render call, so the overrides below check it against each
 // tracked hero-squares list and pick the right image - everything else
 // renders as usual.
+//
+// The Pope and Archer reuse the OLD Archer/Wizard art files rather than
+// needing new assets: since only evolution outputs used to get more
+// detailed art than a plain piece, and now Archer and Pope are the two
+// evolution outputs, the Pope wears the old Archer's skin ("wA"/"bA") and
+// the Archer wears the old Wizard's skin ("wW"/"bW") - a straight swap, no
+// new art required.
 export function buildPiecesWithEvolutions({
-  whiteDragonSquare,
-  blackDragonSquare,
-  whiteWizardSquares = [],
-  blackWizardSquares = [],
-  whiteArcherSquares = [],
-  blackArcherSquares = [],
+  whiteDragonSquares = [],
+  blackDragonSquares = [],
+  whitePopeSquare,
+  blackPopeSquare,
+  whiteArcherSquare,
+  blackArcherSquare,
   whiteHydraSquares = [],
   blackHydraSquares = [],
   whiteCyclopsSquares = [],
@@ -56,31 +63,31 @@ export function buildPiecesWithEvolutions({
     return <img src={blackKingSkinSrc || pieceImageSrc("bK")} alt="bK" style={IMG_STYLE} draggable={false} />;
   }
   function WhiteRookOrDragon(props) {
-    const src = pieceImageSrc(props?.square === whiteDragonSquare ? "wD" : "wR");
+    const src = pieceImageSrc(whiteDragonSquares.includes(props?.square) ? "wD" : "wR");
     return <img src={src} alt="wR" style={IMG_STYLE} draggable={false} />;
   }
   function BlackRookOrDragon(props) {
-    const src = pieceImageSrc(props?.square === blackDragonSquare ? "bD" : "bR");
+    const src = pieceImageSrc(blackDragonSquares.includes(props?.square) ? "bD" : "bR");
     return <img src={src} alt="bR" style={IMG_STYLE} draggable={false} />;
   }
-  function WhiteBishopOrWizardOrMirror(props) {
+  function WhiteBishopOrPopeOrMirror(props) {
     const sq = props?.square;
-    const key = whiteWizardSquares.includes(sq) ? "wW" : whiteMirrorSquares.includes(sq) ? "wM" : "wB";
+    const key = sq === whitePopeSquare ? "wA" : whiteMirrorSquares.includes(sq) ? "wM" : "wB";
     return <img src={pieceImageSrc(key)} alt="wB" style={IMG_STYLE} draggable={false} />;
   }
-  function BlackBishopOrWizardOrMirror(props) {
+  function BlackBishopOrPopeOrMirror(props) {
     const sq = props?.square;
-    const key = blackWizardSquares.includes(sq) ? "bW" : blackMirrorSquares.includes(sq) ? "bM" : "bB";
+    const key = sq === blackPopeSquare ? "bA" : blackMirrorSquares.includes(sq) ? "bM" : "bB";
     return <img src={pieceImageSrc(key)} alt="bB" style={IMG_STYLE} draggable={false} />;
   }
   function WhiteKnightOrArcherOrHydra(props) {
     const sq = props?.square;
-    const key = whiteHydraSquares.includes(sq) ? "wH" : whiteArcherSquares.includes(sq) ? "wA" : "wN";
+    const key = whiteHydraSquares.includes(sq) ? "wH" : sq === whiteArcherSquare ? "wW" : "wN";
     return <img src={pieceImageSrc(key)} alt="wN" style={IMG_STYLE} draggable={false} />;
   }
   function BlackKnightOrArcherOrHydra(props) {
     const sq = props?.square;
-    const key = blackHydraSquares.includes(sq) ? "bH" : blackArcherSquares.includes(sq) ? "bA" : "bN";
+    const key = blackHydraSquares.includes(sq) ? "bH" : sq === blackArcherSquare ? "bW" : "bN";
     return <img src={pieceImageSrc(key)} alt="bN" style={IMG_STYLE} draggable={false} />;
   }
   function WhitePawnOrCyclops(props) {
@@ -97,8 +104,8 @@ export function buildPiecesWithEvolutions({
     bK: BlackKing,
     wR: WhiteRookOrDragon,
     bR: BlackRookOrDragon,
-    wB: WhiteBishopOrWizardOrMirror,
-    bB: BlackBishopOrWizardOrMirror,
+    wB: WhiteBishopOrPopeOrMirror,
+    bB: BlackBishopOrPopeOrMirror,
     wN: WhiteKnightOrArcherOrHydra,
     bN: BlackKnightOrArcherOrHydra,
     wP: WhitePawnOrCyclops,
@@ -110,9 +117,9 @@ export function buildPiecesWithEvolutions({
 export const FLAT_2D_BOARD_COLORS = { light: "#eee9e0", dark: "#596670" };
 
 // Mirrors backend/app/api/custom_game_routes.py's POINT_COSTS/DRAGON_COST/
-// WIZARD_COST/ARCHER_COST/HYDRA_COST/CYCLOPS_COST/MIRROR_COST/PAWN_COST -
-// keep these in sync if any changes.
-export const ARCHER_COST = 6;
+// POPE_COST/ARCHER_COST/HYDRA_COST/CYCLOPS_COST/MIRROR_COST/PAWN_COST - keep
+// these in sync if any changes.
+export const DRAGON_COST = 8;
 export const HYDRA_COST = 12;
 export const CYCLOPS_COST = 2;
 export const MIRROR_COST = 5;
@@ -123,17 +130,17 @@ export const POINT_COSTS = {
   R: 5,
   B: 3,
   N: 3,
-  A: ARCHER_COST,
+  D: DRAGON_COST,
   H: HYDRA_COST,
   C: CYCLOPS_COST,
   M: MIRROR_COST,
   P: PAWN_COST,
 };
-export const DRAGON_COST = 8;
-export const WIZARD_COST = 6;
+export const ARCHER_COST = 6;
+export const POPE_COST = 6;
 export const MAX_DECK_POINTS = 31;
 
-export const PALETTE_PIECES = ["K", "Q", "R", "B", "N", "A", "H", "C", "M", "P"];
+export const PALETTE_PIECES = ["K", "Q", "R", "B", "N", "D", "H", "C", "M", "P"];
 export const PIECE_LABELS = {
   K: "King",
   Q: "Queen",
@@ -141,10 +148,10 @@ export const PIECE_LABELS = {
   B: "Bishop",
   N: "Knight",
   D: "Dragon",
-  W: "Wizard",
   A: "Archer",
   H: "Hydra",
   C: "Cyclops",
   M: "Mirror",
   P: "Pawn",
+  Pope: "Pope",
 };

@@ -8,8 +8,8 @@ def _make_game(fen: str, white_dragon_square=None, black_dragon_square=None) -> 
     return CustomGame(
         id="test",
         board=chess.Board(fen=fen),
-        white_dragon_square=white_dragon_square,
-        black_dragon_square=black_dragon_square,
+        white_dragon_squares={white_dragon_square} if white_dragon_square is not None else set(),
+        black_dragon_squares={black_dragon_square} if black_dragon_square is not None else set(),
         vs_ai=False,
     )
 
