@@ -95,6 +95,10 @@ export function useHubState() {
   // function call, never drive a render itself (isHopping state below does
   // that part, for the CSS animation).
   const busyRef = useRef(false);
+  // Mirrors `position` for synchronous reads inside step()/walkTo() below -
+  // see their own comments for why this can't just read `position` (the
+  // state variable) or use setPosition's functional-updater form instead.
+  const positionRef = useRef(AVATAR_START);
   // Click-to-move keeps its own interval/timeout alive across renders so a
   // second click can cancel an in-flight walk before starting a new one.
   const walkHandleRef = useRef(null);
@@ -103,15 +107,21 @@ export function useHubState() {
     (direction) => {
       if (busyRef.current) return; // ignore input mid-hop
       const { dx, dy } = DIRECTION_OFFSETS[direction];
-      let moved = false;
-      setPosition((prev) => {
-        const next = { x: prev.x + dx, y: prev.y + dy };
-        if (!inBounds(next) || isBlocked(next)) return prev;
-        moved = true;
-        return next;
-      });
+      const prev = positionRef.current;
+      const next = { x: prev.x + dx, y: prev.y + dy };
       setFacing(direction);
-      if (!moved) return; // walked into a wall/prop - no hop, no cooldown
+      // Deliberately NOT a setPosition(prev => ...) functional updater: React
+      // 18 StrictMode invokes those twice in development to catch impure
+      // ones, and this one used to set a "moved" flag as a side effect
+      // inside it - the second (discarded) invocation's side effect could
+      // clobber the first, silently skipping playHopSound() below even
+      // though the position itself still committed correctly (from
+      // whichever invocation React kept). Reading/writing positionRef here
+      // instead means there's no updater function for React to double-
+      // invoke - just a single, plain setPosition(next) value call.
+      if (!inBounds(next) || isBlocked(next)) return; // walked into a wall/prop - no hop, no cooldown
+      positionRef.current = next;
+      setPosition(next);
       playHopSound();
       busyRef.current = true;
       setIsHopping(true);
@@ -144,28 +154,33 @@ export function useHubState() {
       }
       function tick() {
         if (cancelled) return;
-        setPosition((prev) => {
-          if (tilesEqual(prev, target)) {
-            stop();
-            return prev;
-          }
-          const dx = target.x - prev.x;
-          const dy = target.y - prev.y;
-          // One axis at a time keeps this simple - no real pathfinding is
-          // needed in a room this small and this empty of obstacles.
-          const direction = dx !== 0 ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
-          const { dx: sdx, dy: sdy } = DIRECTION_OFFSETS[direction];
-          const next = { x: prev.x + sdx, y: prev.y + sdy };
-          if (!inBounds(next) || isBlocked(next)) {
-            stop();
-            return prev;
-          }
-          setFacing(direction);
-          playHopSound();
-          busyRef.current = true;
-          setIsHopping(true);
-          return next;
-        });
+        // Same reasoning as step() above: no setPosition(prev => ...)
+        // functional updater, since playHopSound() (and everything else
+        // here) used to run INSIDE one - a real side effect, not just a
+        // flag, so React double-invoking it in StrictMode used to play the
+        // sound twice per step during a click-to-move walk.
+        const prev = positionRef.current;
+        if (tilesEqual(prev, target)) {
+          stop();
+          return;
+        }
+        const dx = target.x - prev.x;
+        const dy = target.y - prev.y;
+        // One axis at a time keeps this simple - no real pathfinding is
+        // needed in a room this small and this empty of obstacles.
+        const direction = dx !== 0 ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
+        const { dx: sdx, dy: sdy } = DIRECTION_OFFSETS[direction];
+        const next = { x: prev.x + sdx, y: prev.y + sdy };
+        if (!inBounds(next) || isBlocked(next)) {
+          stop();
+          return;
+        }
+        setFacing(direction);
+        playHopSound();
+        busyRef.current = true;
+        setIsHopping(true);
+        positionRef.current = next;
+        setPosition(next);
       }
       tick();
       // Guard against the immediate tick() above already having finished
