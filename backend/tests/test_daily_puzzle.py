@@ -130,3 +130,76 @@ def test_streak_of_ten_unlocks_the_skin_flag(client):
     streak = db.get_streak(user_id)
     assert streak["current_streak"] == 10
     assert streak["current_streak"] >= db.STREAK_UNLOCK_SKIN_DAYS
+
+
+# --- custom_position: an arbitrary FEN + hero squares, not just a
+# fresh-draft-style back_rank setup - see daily_puzzle/models.py's
+# DailyPuzzleCustomPosition docstring for why the back_rank shape alone
+# can't build a genuinely mid-game-looking tactical position.
+
+
+def test_post_and_solve_a_dragon_custom_position_puzzle(client):
+    token, user_id = _register(client, "dpDragon")
+    puzzle_date = db.today_string()
+
+    # A verified checkmate-in-one: White King f8, Dragon d6; Black King h8
+    # boxed in by its own pawns on g7/h7. Dragon d6-f7 is a knight-jump
+    # check (unreachable by a plain Rook) with the King already covering
+    # g8 - see this session's verify_puzzle.py for the full cook-check.
+    resp = client.post(
+        "/api/daily-puzzle",
+        json={
+            "puzzle_date": puzzle_date,
+            "custom_position": {
+                "fen": "5K1k/6pp/3R1p2/8/8/8/8/8 w - - 0 1",
+                "white_dragon_squares": ["d6"],
+            },
+            "solution": [{"from_square": "d6", "to_square": "f7", "shoot": False}],
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    today = client.get("/api/daily-puzzle/today", headers=_auth(token))
+    assert today.status_code == 200, today.text
+    body = today.json()
+    assert body["game"]["white_dragon_squares"] == ["d6"]
+    assert body["my_side"] == "white"
+
+    move = client.post(
+        "/api/daily-puzzle/move", json={"from_square": "d6", "to_square": "f7", "shoot": False}, headers=_auth(token)
+    )
+    assert move.status_code == 200, move.text
+    body = move.json()
+    assert body["correct"] is True
+    assert body["puzzle_solved"] is True
+    assert body["game"]["status"] == "checkmate"
+
+
+def test_create_rejects_both_custom_position_and_back_ranks(client):
+    token, _ = _register(client, "dpBoth")
+    resp = client.post(
+        "/api/daily-puzzle",
+        json={
+            "puzzle_date": db.today_string(),
+            "white_back_rank": {"e1": "K"},
+            "black_back_rank": {"e8": "K"},
+            "custom_position": {"fen": "8/8/8/8/8/8/4K3/4k3 w - - 0 1"},
+            "solution": [{"from_square": "e2", "to_square": "e3", "shoot": False}],
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 400
+
+
+def test_create_rejects_neither_custom_position_nor_back_ranks(client):
+    token, _ = _register(client, "dpNeither")
+    resp = client.post(
+        "/api/daily-puzzle",
+        json={
+            "puzzle_date": db.today_string(),
+            "solution": [{"from_square": "e2", "to_square": "e3", "shoot": False}],
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 400

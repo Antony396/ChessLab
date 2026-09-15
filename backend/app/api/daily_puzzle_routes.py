@@ -15,8 +15,9 @@ import chess
 from fastapi import APIRouter, Depends, HTTPException
 
 from app import db
-from app.api.custom_game_routes import _apply_move, _build_game_from_two_decks, _to_state
+from app.api.custom_game_routes import _apply_move, _build_game_from_two_decks, _compute_status, _to_state
 from app.custom_chess import rules
+from app.custom_chess import store as game_store
 from app.daily_puzzle import store as puzzle_store
 from app.daily_puzzle.models import (
     DailyPuzzleCreateRequest,
@@ -31,7 +32,33 @@ from app.social.auth import get_current_user_id
 router = APIRouter()
 
 
+def _squares(names: list[str]) -> set[int]:
+    return {chess.parse_square(s.strip().lower()) for s in names}
+
+
+def _square_or_none(name):
+    return chess.parse_square(name.strip().lower()) if name else None
+
+
 def _build_puzzle_game(definition: dict):
+    custom = definition.get("custom_position")
+    if custom:
+        board = chess.Board(custom["fen"])
+        return game_store.create_game(
+            board,
+            white_dragon_squares=_squares(custom.get("white_dragon_squares", [])),
+            black_dragon_squares=_squares(custom.get("black_dragon_squares", [])),
+            white_pope_square=_square_or_none(custom.get("white_pope_square")),
+            black_pope_square=_square_or_none(custom.get("black_pope_square")),
+            white_archer_square=_square_or_none(custom.get("white_archer_square")),
+            black_archer_square=_square_or_none(custom.get("black_archer_square")),
+            white_hydra_squares=_squares(custom.get("white_hydra_squares", [])),
+            black_hydra_squares=_squares(custom.get("black_hydra_squares", [])),
+            white_cyclops_squares=_squares(custom.get("white_cyclops_squares", [])),
+            black_cyclops_squares=_squares(custom.get("black_cyclops_squares", [])),
+            white_mirror_squares=_squares(custom.get("white_mirror_squares", [])),
+            black_mirror_squares=_squares(custom.get("black_mirror_squares", [])),
+        )
     return _build_game_from_two_decks(
         definition["white_back_rank"],
         definition.get("white_evolved_squares", []),
@@ -45,6 +72,11 @@ def create_daily_puzzle(payload: DailyPuzzleCreateRequest, user_id: str = Depend
     puzzle_date = payload.puzzle_date or db.today_string()
     if not payload.solution:
         raise HTTPException(400, "A puzzle needs at least one solution move")
+    has_back_ranks = payload.white_back_rank is not None and payload.black_back_rank is not None
+    if payload.custom_position is None and not has_back_ranks:
+        raise HTTPException(400, "Give either custom_position or both white_back_rank and black_back_rank")
+    if payload.custom_position is not None and has_back_ranks:
+        raise HTTPException(400, "Give either custom_position or back ranks, not both")
 
     # Just a validity check (the position builds and the first solution
     # move is legal from it) - not a full solve-through of every step,
@@ -165,6 +197,13 @@ def submit_daily_puzzle_move(payload: DailyPuzzleMoveRequest, user_id: str = Dep
             raise HTTPException(400, f"This puzzle's solution has a problem: {exc}")
         attempt.game.action_log.append(reply_log)
         attempt.remaining.pop(0)
+
+    # _to_state below just reads whatever's already on game.status (see
+    # _apply_move's own callers elsewhere, e.g. online_move) - never
+    # computed automatically, so this needs to run after every move here
+    # or a checkmate/stalemate ending on the FINAL solution step would
+    # silently report "in_progress" in the response.
+    attempt.game.status = _compute_status(attempt.game)
 
     puzzle_solved = not attempt.remaining
     if puzzle_solved:
