@@ -99,13 +99,22 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   useEffect(() => {
     let socket;
     let cancelled = false;
+    // Updated on every inbound frame, pings (see below) included - the
+    // watchdog below uses this to notice a connection that's gone silently
+    // dead, which onclose alone can't be trusted to catch (see its comment).
+    let lastMessageAt = Date.now();
 
     function connect() {
+      lastMessageAt = Date.now();
       socket = new WebSocket(onlineGameWsUrl(gameId));
       socket.onopen = () => setConnected(true);
       socket.onmessage = (event) => {
+        lastMessageAt = Date.now();
         try {
           const next = JSON.parse(event.data);
+          // A keepalive frame (see backend's _hold_open) - nothing to apply,
+          // its only job is refreshing lastMessageAt above.
+          if (next.type === "ping") return;
           setGameState((prev) => {
             const isNewMove = next.action_log.length > prev.action_log.length;
             if (isNewMove && !pendingOwnMoveRef.current) playMoveSound();
@@ -126,9 +135,25 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     }
 
     connect();
+
+    // The backend pings every 20s whenever there's no real traffic (see
+    // _hold_open in online_game_routes.py), so going quiet much longer than
+    // that means the connection died without a clean close frame - a proxy
+    // (Render's included) can silently drop an idle socket without telling
+    // either side, which otherwise leaves this stuck showing only a stale
+    // optimistic guess indefinitely: onclose never fires, so the normal
+    // reconnect above never runs, while the browser's own dead-TCP
+    // detection can take a very long time (or never trigger at all) behind
+    // a proxy that just stops relaying frames. Forcing a close here instead
+    // routes through that same onclose -> reconnect path on our own schedule.
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastMessageAt > 45000) socket?.close();
+    }, 10000);
+
     return () => {
       cancelled = true;
       clearTimeout(reconnectTimer.current);
+      clearInterval(watchdog);
       socket?.close();
     };
   }, [gameId]);

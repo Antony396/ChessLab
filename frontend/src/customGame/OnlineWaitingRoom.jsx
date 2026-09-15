@@ -20,6 +20,9 @@ export default function OnlineWaitingRoom({ roomId, whiteToken, onGameReady, onE
       socket.onmessage = (event) => {
         try {
           const state = JSON.parse(event.data);
+          // A keepalive frame (see backend's _hold_open) - not the game
+          // state this socket is actually waiting for.
+          if (state.type === "ping") return;
           onGameReady({ initialGame: state, myColor: "white", myToken: whiteToken, roomId });
         } catch {
           // ignore malformed frames

@@ -20,6 +20,7 @@ accepts.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import chess
@@ -44,6 +45,34 @@ from app.custom_chess.models import (
 from app.custom_chess.ws_manager import manager
 
 router = APIRouter()
+
+# Render's proxy (and most others) silently drops a WebSocket that's been
+# idle too long - no close frame, nothing for WebSocketDisconnect to catch,
+# it just stops relaying traffic. A real move re-establishes activity on its
+# own, but a slow-thinking player can easily leave the socket idle longer
+# than that timeout, orphaning it mid-game: the server-side connection looks
+# fine (broadcast() only notices it's dead on the NEXT send attempt, which
+# might not come for a while), while the client sits there never getting
+# the confirming broadcast for whatever move it just made - showing only
+# its own optimistic guess, indefinitely, until something else prompts a
+# reconnect. Sending a small keepalive frame on a timeout, rather than
+# blocking on receive_text() forever, keeps the connection active through
+# any idle-timeout window and lets the frontend's own watchdog (see
+# OnlineGamePlay.jsx) notice a truly dead link far sooner than waiting on
+# the browser's own (often much longer, sometimes indefinite) dead-TCP
+# detection.
+_PING_INTERVAL_SECONDS = 20
+
+
+async def _hold_open(websocket: WebSocket) -> None:
+    """Keep a subscriber socket open, replying to nothing (this channel is
+    server -> client only) but pinging on an idle timeout instead of
+    blocking on receive_text() forever - see _PING_INTERVAL_SECONDS above."""
+    while True:
+        try:
+            await asyncio.wait_for(websocket.receive_text(), timeout=_PING_INTERVAL_SECONDS)
+        except asyncio.TimeoutError:
+            await websocket.send_json({"type": "ping"})
 
 
 @router.post("/online/create", response_model=OnlineRoomCreateResponse)
@@ -74,8 +103,7 @@ async def online_room_ws(websocket: WebSocket, room_id: str):
             game = store.get_game(room.game_id)
             if game is not None:
                 await websocket.send_json(_to_state(game).model_dump())
-        while True:
-            await websocket.receive_text()
+        await _hold_open(websocket)
     except WebSocketDisconnect:
         pass
     finally:
@@ -158,10 +186,7 @@ async def online_game_ws(websocket: WebSocket, game_id: str):
         # Push the current state right away, so a client that connects after
         # a move already happened isn't stuck waiting for the next one.
         await websocket.send_json(_to_state(game).model_dump())
-        while True:
-            # This channel is server -> client only; just keep the socket
-            # open and drop whatever the client sends (if anything).
-            await websocket.receive_text()
+        await _hold_open(websocket)
     except WebSocketDisconnect:
         pass
     finally:

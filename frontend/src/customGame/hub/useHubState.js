@@ -27,12 +27,13 @@ export const PEDESTAL_TILE = { x: 2, y: 4 };
 // symmetric with PEDESTAL_TILE on the left, and interacted with the same
 // way (see isBlocked below and HubWorld.jsx's InteractiveTrigger for it).
 export const PUZZLE_PEDESTAL_TILE = { x: 12, y: 4 };
-// The leaderboard signboard - free-standing on the floor near the back of
-// the room, between the two pedestals. Purely decorative for now (see
-// HubWorld.jsx's LeaderboardProp), but still a real piece of furniture -
-// it blocks its own tile like the pedestals do, just with no
-// InteractiveTrigger wrapping it since there's nothing to activate yet.
-export const LEADERBOARD_TILE = { x: 7, y: 1 };
+// The leaderboard signboard - free-standing on the floor in the open gap
+// between the avatar's start spot and the bookshelf, right of center.
+// Purely decorative for now (see HubWorld.jsx's LeaderboardProp), but
+// still a real piece of furniture - it blocks its own tile like the
+// pedestals do, just with no InteractiveTrigger wrapping it since there's
+// nothing to activate yet.
+export const LEADERBOARD_TILE = { x: 10, y: 2 };
 // Bottom-center, lined up with the glowing entrance notch painted into the
 // background art.
 const AVATAR_START = { x: 7, y: 6 };
