@@ -32,12 +32,10 @@ export const flat2dPieces = Object.fromEntries(
 // tracked hero-squares list and pick the right image - everything else
 // renders as usual.
 //
-// The Pope and Archer reuse the OLD Archer/Wizard art files rather than
-// needing new assets: since only evolution outputs used to get more
-// detailed art than a plain piece, and now Archer and Pope are the two
-// evolution outputs, the Pope wears the old Archer's skin ("wA"/"bA") and
-// the Archer wears the old Wizard's skin ("wW"/"bW") - a straight swap, no
-// new art required.
+// The Pope reuses the OLD Wizard's art file rather than needing a new
+// asset (a robed, mystical look suits "Pope" well); the Archer keeps its
+// own original art, since it's still recognizably the same piece, just
+// evolution-only now instead of directly draftable.
 export function buildPiecesWithEvolutions({
   whiteDragonSquares = [],
   blackDragonSquares = [],
@@ -72,22 +70,22 @@ export function buildPiecesWithEvolutions({
   }
   function WhiteBishopOrPopeOrMirror(props) {
     const sq = props?.square;
-    const key = sq === whitePopeSquare ? "wA" : whiteMirrorSquares.includes(sq) ? "wM" : "wB";
+    const key = sq === whitePopeSquare ? "wW" : whiteMirrorSquares.includes(sq) ? "wM" : "wB";
     return <img src={pieceImageSrc(key)} alt="wB" style={IMG_STYLE} draggable={false} />;
   }
   function BlackBishopOrPopeOrMirror(props) {
     const sq = props?.square;
-    const key = sq === blackPopeSquare ? "bA" : blackMirrorSquares.includes(sq) ? "bM" : "bB";
+    const key = sq === blackPopeSquare ? "bW" : blackMirrorSquares.includes(sq) ? "bM" : "bB";
     return <img src={pieceImageSrc(key)} alt="bB" style={IMG_STYLE} draggable={false} />;
   }
   function WhiteKnightOrArcherOrHydra(props) {
     const sq = props?.square;
-    const key = whiteHydraSquares.includes(sq) ? "wH" : sq === whiteArcherSquare ? "wW" : "wN";
+    const key = whiteHydraSquares.includes(sq) ? "wH" : sq === whiteArcherSquare ? "wA" : "wN";
     return <img src={pieceImageSrc(key)} alt="wN" style={IMG_STYLE} draggable={false} />;
   }
   function BlackKnightOrArcherOrHydra(props) {
     const sq = props?.square;
-    const key = blackHydraSquares.includes(sq) ? "bH" : sq === blackArcherSquare ? "bW" : "bN";
+    const key = blackHydraSquares.includes(sq) ? "bH" : sq === blackArcherSquare ? "bA" : "bN";
     return <img src={pieceImageSrc(key)} alt="bN" style={IMG_STYLE} draggable={false} />;
   }
   function WhitePawnOrCyclops(props) {

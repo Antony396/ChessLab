@@ -86,9 +86,9 @@ function DeckSlot({ letter, file, dark, isEvolution, isKing, isDragTarget, kingS
   const evolvedCost = isArcher ? ARCHER_COST : isPope ? POPE_COST : null;
   const cost = letter ? evolvedCost ?? POINT_COSTS[letter] ?? 0 : null;
   const label = letter ? (isArcher ? "Archer" : isPope ? "Pope" : PIECE_LABELS[letter]) : "";
-  // The Archer/Pope reuse the old Wizard/Archer skins - see
-  // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
-  const imageKey = isArcher ? "wW" : isPope ? "wA" : `w${letter}`;
+  // The Pope reuses the old Wizard skin; the Archer keeps its own art -
+  // see flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+  const imageKey = isArcher ? "wA" : isPope ? "wW" : `w${letter}`;
   // The King's slot always shows whatever skin is currently equipped (see
   // customGame/skinStore.js) - kept in sync with the hub avatar and the
   // actual game board.
@@ -127,9 +127,9 @@ function DeckSlot({ letter, file, dark, isEvolution, isKing, isDragTarget, kingS
   );
 }
 
-// The Archer/Pope reuse the old Wizard/Archer skins - see
+// The Pope reuses the old Wizard skin; the Archer keeps its own art - see
 // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
-const EVOLUTION_ART = { N: "wW", B: "wA" };
+const EVOLUTION_ART = { N: "wA", B: "wW" };
 const EVOLUTION_NAME = { N: "Archer", B: "Pope" };
 // Short text for the palette card's corner badge - both evolutions now
 // craft exactly one hero piece.
@@ -228,9 +228,9 @@ const DEMO_CELL_PX = 20;
 // The full set of destinations from EVERY mode stays dotted/ringed on the
 // board throughout, so switching modes only changes what's animating, never
 // what's visible - you always see the whole picture.
-// The Archer/Pope reuse the old Wizard/Archer skins - see
+// The Pope reuses the old Wizard skin; the Archer keeps its own art - see
 // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
-const PIECE_DEMO_ART = { N: "wW", B: "wA", D: "wD" };
+const PIECE_DEMO_ART = { N: "wA", B: "wW", D: "wD" };
 const PIECE_DEMO_MODES = {
   // Knight's evolution slot -> Archer.
   N: [
@@ -390,9 +390,9 @@ function PaletteCard({ letter, locked, expanded, onDragStart, onDragEnd, onToggl
 function EvoSlotBox({ evoSlotType, remaining, onDragOver, onDrop, onDragStartPiece, onDragEndPiece, onReset }) {
   const [showDemo, setShowDemo] = useState(false);
   const depleted = evoSlotType !== null && remaining === 0;
-  // The Archer/Pope reuse the old Wizard/Archer skins - see
-  // flat2dPieces.jsx's buildPiecesWithEvolutions for why.
-  const pieceArt = evoSlotType === "N" ? "wW" : "wA";
+  // The Pope reuses the old Wizard skin; the Archer keeps its own art -
+  // see flat2dPieces.jsx's buildPiecesWithEvolutions for why.
+  const pieceArt = evoSlotType === "N" ? "wA" : "wW";
   const pieceName = evoSlotType === "N" ? "Archer" : "Pope";
 
   // The recipe changing (crafted, reset, depleted) makes the previous demo

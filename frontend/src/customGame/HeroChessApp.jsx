@@ -6,6 +6,7 @@ import OnlineGamePlay from "./OnlineGamePlay";
 import HubWorld from "./hub/HubWorld";
 import { useHubState } from "./hub/useHubState";
 import FriendsPanel from "./social/FriendsPanel";
+import SkinsPanel from "./hub/SkinsPanel";
 import SimulWaitingRoom from "./social/SimulWaitingRoom";
 import ChallengeWaitingForAccept from "./social/ChallengeWaitingForAccept";
 import IncomingChallengePrompt from "./social/IncomingChallengePrompt";
@@ -267,7 +268,8 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     // replacing it - closing the overlay without starting a match just
     // returns to the hub, in place, with the avatar exactly where it was
     // left.
-    const overlayTitle = hub.activeOverlay === "friends" ? "Friends" : "Play a Game";
+    const overlayTitle =
+      hub.activeOverlay === "friends" ? "Friends" : hub.activeOverlay === "skins" ? "Choose a Skin" : "Play a Game";
     content = (
       <>
         <HubWorld
@@ -278,6 +280,7 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
           onReturnHome={handleReturnHome}
           onOpenFriends={() => hub.setActiveOverlay("friends")}
           onOpenPuzzleRush={() => setInPuzzleRush(true)}
+          onOpenSkins={() => hub.setActiveOverlay("skins")}
           onLogout={handleLogout}
         />
         {hub.activeOverlay && (
@@ -294,6 +297,8 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
               </button>
               {hub.activeOverlay === "friends" ? (
                 <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeSent} />
+              ) : hub.activeOverlay === "skins" ? (
+                <SkinsPanel />
               ) : (
                 <DeckBuilder
                   onGameStarted={handleGameStartedFromHub}

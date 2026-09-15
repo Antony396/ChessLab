@@ -50,6 +50,57 @@ export const KING_SKINS = {
     whiteTeamSrc: "/pieces/avatars/dark-knight-white.png",
     headSrc: "/pieces/avatars/dark-knight-white-head.png",
   },
+  // Already cream/light-armored art (only the cape/trim color differs), so
+  // - same as Classic - src doubles as whiteTeamSrc directly.
+  royal: {
+    name: "Royal King",
+    src: "/pieces/avatars/royal-king.png",
+    whiteTeamSrc: "/pieces/avatars/royal-king.png",
+    headSrc: "/pieces/avatars/royal-king-head.png",
+  },
+  regal: {
+    name: "Regal King",
+    src: "/pieces/avatars/regal-king.png",
+    whiteTeamSrc: "/pieces/avatars/regal-king.png",
+    headSrc: "/pieces/avatars/regal-king-head.png",
+  },
+  sovereign: {
+    name: "Sovereign King",
+    src: "/pieces/avatars/sovereign-king.png",
+    whiteTeamSrc: "/pieces/avatars/sovereign-king.png",
+    headSrc: "/pieces/avatars/sovereign-king-head.png",
+  },
+  // Dark-armored, so - like Dark Knight - whiteTeamSrc is a separate
+  // recolored-to-cream asset (armor plate recolored, black linework and
+  // the green cape/accent color untouched).
+  hydra: {
+    name: "Threefold King",
+    src: "/pieces/avatars/hydra-king.png",
+    whiteTeamSrc: "/pieces/avatars/hydra-king-white.png",
+    headSrc: "/pieces/avatars/hydra-king-head.png",
+  },
+  dragonKing: {
+    name: "Dragon King",
+    src: "/pieces/avatars/dragon-king.png",
+    whiteTeamSrc: "/pieces/avatars/dragon-king-white.png",
+    headSrc: "/pieces/avatars/dragon-king-head.png",
+  },
+  // A distinct second dark-armored look alongside the existing Dark
+  // Knight, not a replacement for it.
+  crimsonKnight: {
+    name: "Crimson Knight",
+    src: "/pieces/avatars/crimson-knight.png",
+    whiteTeamSrc: "/pieces/avatars/crimson-knight-white.png",
+    headSrc: "/pieces/avatars/crimson-knight-head.png",
+  },
+  // A third dark-armored look (glowing red eyes) - a distinct skin in its
+  // own right, not a variant of Crimson Knight or the original Dark Knight.
+  emberKnight: {
+    name: "Ember Knight",
+    src: "/pieces/avatars/ember-knight.png",
+    whiteTeamSrc: "/pieces/avatars/ember-knight-white.png",
+    headSrc: "/pieces/avatars/ember-knight-head.png",
+  },
 };
 const DEFAULT_SKIN = "classic";
 const STORAGE_KEY = "evoChessEquippedSkin";

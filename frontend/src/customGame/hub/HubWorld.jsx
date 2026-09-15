@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import AvatarController from "./AvatarController";
 import InteractiveTrigger from "./InteractiveTrigger";
 import { HUB_COLS, HUB_ROWS, TILE_SIZE, PEDESTAL_TILE, isInsideRoom } from "./useHubState";
-import { KING_SKINS, useEquippedSkin, setEquippedSkin } from "../skinStore";
+import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
 import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
@@ -129,35 +129,17 @@ function PlayerProfileBadge({ username }) {
 
 // Stacked directly under the profile picture (both `position: fixed`,
 // anchored to the real page edge for the same reason PlayerProfileBadge
-// is - see its comment above).
-function SkinPicker() {
-  const [open, setOpen] = useState(false);
+// is - see its comment above). Opens the shared station-overlay chrome
+// (see HeroChessApp.jsx's SkinsPanel branch) rather than its own inline
+// dropdown - a proper gallery to browse/compare skins in, not a cramped list.
+function SkinButton({ onClick }) {
   const equipped = useEquippedSkin();
-
   return (
     <div className="hub-skin-picker">
-      <button type="button" className="hub-skin-toggle" onClick={() => setOpen((v) => !v)} title="Change King skin">
+      <button type="button" className="hub-skin-toggle" onClick={onClick} title="Change King skin">
         <img src={KING_SKINS[equipped].src} alt="" className="hub-skin-toggle-img" />
         <span>Skin</span>
       </button>
-      {open && (
-        <div className="hub-skin-menu">
-          {Object.entries(KING_SKINS).map(([key, skin]) => (
-            <button
-              key={key}
-              type="button"
-              className={`hub-skin-option${key === equipped ? " active" : ""}`}
-              onClick={() => {
-                setEquippedSkin(key);
-                setOpen(false);
-              }}
-            >
-              <img src={skin.src} alt="" className="hub-skin-option-img" />
-              <span>{skin.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -226,7 +208,7 @@ function VisitingBanner({ username, onReturnHome }) {
 // HeroChessApp, since it needs the friend's username which presence alone
 // doesn't carry) is who this dorm actually belongs to right now, if not
 // the signed-in player themself.
-export default function HubWorld({ hub, username, presence, visiting, onReturnHome, onOpenFriends, onOpenPuzzleRush, onLogout }) {
+export default function HubWorld({ hub, username, presence, visiting, onReturnHome, onOpenFriends, onOpenPuzzleRush, onOpenSkins, onLogout }) {
   const equippedSkin = useEquippedSkin();
   const skin = KING_SKINS[equippedSkin];
   const isVisiting = Boolean(visiting);
@@ -303,7 +285,7 @@ export default function HubWorld({ hub, username, presence, visiting, onReturnHo
     <>
       <div className="hub-side-panel">
         <PlayerProfileBadge username={username} />
-        <SkinPicker />
+        <SkinButton onClick={onOpenSkins} />
         <FriendsButton onClick={onOpenFriends} />
         <PuzzleRushButton onClick={onOpenPuzzleRush} />
         <LogoutButton onClick={onLogout} />
