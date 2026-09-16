@@ -43,7 +43,10 @@ const KIND_INFO = {
 function countBaseTypes(fen, color) {
   const counts = { q: 0, r: 0, b: 0, n: 0, p: 0 };
   try {
-    const board = new Chess(fen).board();
+    // skipValidation: a drafted back-rank Pawn (a real custom-deck feature)
+    // is otherwise unconditionally rejected by chess.js's FEN validator -
+    // see legalMoves.js's LOAD_OPTS for the full explanation.
+    const board = new Chess(fen, { skipValidation: true }).board();
     for (const row of board) {
       for (const cell of row) {
         if (cell && cell.color === color && counts[cell.type] !== undefined) {

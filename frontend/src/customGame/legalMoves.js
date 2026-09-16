@@ -1,5 +1,17 @@
 import { Chess } from "chess.js";
 
+// A drafted back-rank Pawn is a legitimate custom-deck feature (see
+// backend's custom_setup, which deliberately tolerates it) - a Pawn's
+// starting square just isn't always rank 2/7 here. chess.js's own FEN
+// validator unconditionally rejects ANY pawn on rank 1 or 8 with no way to
+// opt out except this flag, so every load in this file must pass it or a
+// game with a drafted back-rank pawn permanently breaks every legal-move
+// hint (and every hand-rolled optimistic FEN below) the moment it's dealt -
+// this was "dots randomly stop working" for real games, not the earlier
+// off-turn/en-passant bug. skipValidation only turns off those sanity
+// checks; the actual piece-placement/turn/castling parsing is unaffected.
+const LOAD_OPTS = { skipValidation: true };
+
 // Legal-destination hints for the board's drag-start highlight. chess.js
 // only understands the piece actually encoded in the FEN, which is correct
 // for normal pieces and for a Dragon's rook-mode travel (it's stored as a
@@ -101,7 +113,7 @@ function offsetDestinations(offsets, fromSquare) {
 // promotion - no hero special move is ever any of those.
 function applyRelocateAndCapture(fen, from, to, promotion) {
   try {
-    const chess = new Chess(fen);
+    const chess = new Chess(fen, LOAD_OPTS);
     const mover = chess.get(from);
     if (!mover) return null;
     const wasCapture = Boolean(chess.get(to));
@@ -124,7 +136,7 @@ function applyRelocateAndCapture(fen, from, to, promotion) {
 // the target square and passes the turn, same idea as above.
 function applyNonRelocatingCapture(fen, targetSquare) {
   try {
-    const chess = new Chess(fen);
+    const chess = new Chess(fen, LOAD_OPTS);
     if (!chess.get(targetSquare)) return null;
     chess.remove(targetSquare);
 
@@ -177,7 +189,7 @@ export function tryOptimisticFen(
   if (shoot) return applyNonRelocatingCapture(fen, to);
 
   try {
-    const chess = new Chess(fen);
+    const chess = new Chess(fen, LOAD_OPTS);
     const move = chess.move({ from, to, promotion });
     if (move) return chess.fen();
   } catch {
@@ -187,7 +199,7 @@ export function tryOptimisticFen(
 
   let chess;
   try {
-    chess = new Chess(fen);
+    chess = new Chess(fen, LOAD_OPTS);
   } catch {
     return null;
   }
@@ -273,7 +285,7 @@ function archerRelocateDestinations(chess, fromSquare) {
 // now that there's no separate "arm the shot" toggle to ask instead.
 export function isArcherShootMove(fen, archerSquare, targetSquare) {
   try {
-    const chess = new Chess(fen);
+    const chess = new Chess(fen, LOAD_OPTS);
     return knightShapeDestinations(chess, archerSquare, { requireEnemy: true }).includes(targetSquare);
   } catch {
     return false;
@@ -353,7 +365,7 @@ function popeBoostedDiagonalCaptureSquares(fromSquare, color) {
 // rank (promotion) the same way a normal pawn push can.
 function applyBoostedPawnPush(fen, from, to, promotion) {
   try {
-    const chess = new Chess(fen);
+    const chess = new Chess(fen, LOAD_OPTS);
     const mover = chess.get(from);
     if (!mover) return null;
     const [ff, fr] = toCoord(from);
@@ -394,7 +406,7 @@ function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra, mim
   if (mimicType === "k" || (mimicType === "b" && mimicIsPope)) return kingStepDestinations(chess, fromSquare);
 
   const mover = chess.get(fromSquare);
-  const scratch = new Chess(chess.fen());
+  const scratch = new Chess(chess.fen(), LOAD_OPTS);
   scratch.remove(fromSquare);
   scratch.put({ type: mimicType, color: mover.color }, fromSquare);
   let destinations;
@@ -430,7 +442,7 @@ function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra, mim
 // question without needing a color argument.
 function keepsOwnKingSafeIfRelocated(chess, fromSquare, toSquare, moverColor) {
   try {
-    const scratch = new Chess(chess.fen());
+    const scratch = new Chess(chess.fen(), LOAD_OPTS);
     const piece = scratch.get(fromSquare);
     if (!piece) return false;
     scratch.remove(fromSquare);
@@ -458,7 +470,7 @@ function keepsOwnKingSafeIfRelocated(chess, fromSquare, toSquare, moverColor) {
 // shooter never relocates, only the target square loses its piece.
 function keepsOwnKingSafeIfShotFrom(chess, targetSquare) {
   try {
-    const scratch = new Chess(chess.fen());
+    const scratch = new Chess(chess.fen(), LOAD_OPTS);
     scratch.remove(targetSquare);
     return !scratch.inCheck();
   } catch (err) {
@@ -487,7 +499,7 @@ export function computeLegalDestinations({
 }) {
   let chess;
   try {
-    chess = new Chess(fen);
+    chess = new Chess(fen, LOAD_OPTS);
   } catch (err) {
     console.warn("computeLegalDestinations: couldn't load fen, showing no hints", { fen, square, err });
     return [];
@@ -524,7 +536,7 @@ export function computeLegalDestinations({
     // square could add to it anyway.
     fenParts[3] = "-";
     try {
-      chess = new Chess(fenParts.join(" "));
+      chess = new Chess(fenParts.join(" "), LOAD_OPTS);
     } catch (err) {
       console.warn("computeLegalDestinations: couldn't flip turn to preview off-turn piece, showing no hints", {
         fen,
