@@ -67,6 +67,14 @@ export function postOnlineMove(payload) {
   }).then(handle);
 }
 
+export function postOnlineResign(payload) {
+  return fetch(`${API_BASE}/online/resign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(handle);
+}
+
 function wsRoot() {
   return API_ROOT.replace(/^http/, "ws");
 }

@@ -790,6 +790,7 @@ def _to_state(game: store.CustomGame) -> CustomGameState:
         fen=game.board.fen(),
         turn="white" if game.board.turn == chess.WHITE else "black",
         status=game.status,
+        resigned_by=None if game.resigned_by is None else ("white" if game.resigned_by == chess.WHITE else "black"),
         vs_ai=game.vs_ai,
         white_dragon_squares=_square_names(game.white_dragon_squares),
         black_dragon_squares=_square_names(game.black_dragon_squares),

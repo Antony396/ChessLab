@@ -79,6 +79,9 @@ class CustomGame:
     black_last_moved_was_pope: bool = False
     vs_ai: bool = False
     status: str = "in_progress"
+    # Set (to the color that gave up) only when status == "resigned" - see
+    # online_game_routes.py's resign endpoint, the only place this changes.
+    resigned_by: Optional[chess.Color] = None
     action_log: list[str] = field(default_factory=list)
     # One FEN per position the board has actually been in, oldest first,
     # starting with the initial setup - lets the frontend's move-history

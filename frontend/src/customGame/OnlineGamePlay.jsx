@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
-import { onlineGameWsUrl, postOnlineMove } from "./api";
+import { onlineGameWsUrl, postOnlineMove, postOnlineResign } from "./api";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../pieces/flat2dPieces";
 import { KING_SKINS, useEquippedSkin } from "./skinStore";
 import { computeLegalDestinations, isArcherShootMove, relocateHeroTrackingSquares, tryOptimisticFen } from "./legalMoves";
@@ -30,6 +30,7 @@ const STATUS_LABEL = {
   checkmate: "Checkmate",
   stalemate: "Stalemate",
   draw: "Draw",
+  resigned: "Resigned",
 };
 
 export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }) {
@@ -39,6 +40,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
   const [error, setError] = useState(null);
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
+  // Resigning is a real, consequential action (it costs ELO/currency, see
+  // backend's online_resign) - a single misclick shouldn't be able to
+  // trigger it. First click arms a short confirm window instead of firing
+  // immediately; a second click within it actually resigns.
+  const [confirmingResign, setConfirmingResign] = useState(false);
+  const confirmResignTimer = useRef(null);
+  useEffect(() => () => clearTimeout(confirmResignTimer.current), []);
   // At most one queued premove - {from, to} | null. Dropping my own piece
   // during the opponent's turn queues one instead of submitting right away
   // (see handlePieceDrop); the effect below fires it for real the instant
@@ -161,6 +169,20 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       socket?.close();
     };
   }, [gameId]);
+
+  function handleResignClick() {
+    if (!confirmingResign) {
+      setConfirmingResign(true);
+      confirmResignTimer.current = setTimeout(() => setConfirmingResign(false), 3000);
+      return;
+    }
+    clearTimeout(confirmResignTimer.current);
+    setConfirmingResign(false);
+    // The broadcast (in the WS effect above) is what actually updates
+    // gameState for both players - this call just triggers it, same
+    // division of labor as a real move's own POST.
+    postOnlineResign({ game_id: gameState.id, player_token: myToken }).catch((e) => setError(e.message));
+  }
 
   // Works for either color, not just mine - a click-to-preview should show
   // what an opponent's piece could do too (see the isWhite branches below),
@@ -463,6 +485,16 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
               Cancel Premove
             </button>
           )}
+          {!isOver && (
+            <button
+              type="button"
+              className={`resign-btn${confirmingResign ? " confirming" : ""}`}
+              onClick={handleResignClick}
+              title={confirmingResign ? "Click again to confirm" : "Give up the game"}
+            >
+              {confirmingResign ? "Confirm Resign?" : "Resign"}
+            </button>
+          )}
           <button type="button" onClick={onExit}>
             New Game
           </button>
@@ -477,7 +509,13 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
             Reviewing move {history.currentIndex} of {history.liveIndex}
           </div>
         ) : (
-          <GameStatusBanner status={gameState.status} inCheck={gameState.in_check} turn={gameState.turn} myColor={myColor} />
+          <GameStatusBanner
+            status={gameState.status}
+            inCheck={gameState.in_check}
+            turn={gameState.turn}
+            myColor={myColor}
+            resignedBy={gameState.resigned_by}
+          />
         )}
         <Chessboard options={options} />
       </div>

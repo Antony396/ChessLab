@@ -61,11 +61,21 @@ class CustomMoveRequest(BaseModel):
     shoot: bool = False
 
 
+class ResignRequest(BaseModel):
+    game_id: str
+    player_token: str
+
+
 class CustomGameState(BaseModel):
     id: str
     fen: str
     turn: Literal["white", "black"]
-    status: Literal["in_progress", "checkmate", "stalemate", "draw"]
+    status: Literal["in_progress", "checkmate", "stalemate", "draw", "resigned"]
+    # Only set when status == "resigned" - who gave up, so the frontend can
+    # show "you resigned" vs "they resigned" (unlike checkmate, this can't
+    # be inferred from whose turn it is - the resigning side isn't
+    # necessarily the one to move).
+    resigned_by: Optional[Literal["white", "black"]] = None
     vs_ai: bool
     # Current squares of each side's Dragons (there can be several, drafted
     # directly like the Hydra/Cyclops/Mirror).

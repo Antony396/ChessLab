@@ -7,7 +7,7 @@ import { playCheckSound, playCheckmateSound } from "./sound";
 // (accounting for a hero piece's extra threat squares) is only computable
 // server-side (see backend's _in_check) without duplicating that whole rule
 // set in JS.
-export default function GameStatusBanner({ status, inCheck, turn, myColor }) {
+export default function GameStatusBanner({ status, inCheck, turn, myColor, resignedBy }) {
   // Plays exactly once per transition INTO check or checkmate (never on
   // every render this stays true, and never for either resolving) - a
   // distinct sound each, per both players so it reads as a shared
@@ -20,7 +20,7 @@ export default function GameStatusBanner({ status, inCheck, turn, myColor }) {
   useEffect(() => {
     const prev = prevRef.current;
     if (prev) {
-      if (status === "checkmate" && prev.status !== "checkmate") {
+      if ((status === "checkmate" || status === "resigned") && prev.status !== status) {
         playCheckmateSound();
       } else if (inCheck && !prev.inCheck && status !== "checkmate") {
         playCheckSound();
@@ -44,6 +44,14 @@ export default function GameStatusBanner({ status, inCheck, turn, myColor }) {
   }
   if (status === "draw") {
     return <div className="game-status-banner draw">Draw</div>;
+  }
+  if (status === "resigned") {
+    const iResigned = resignedBy === myColor;
+    return (
+      <div className={`game-status-banner checkmate${iResigned ? " lose" : " win"}`}>
+        {iResigned ? "You resigned" : "Opponent resigned — you won"}
+      </div>
+    );
   }
   if (inCheck) {
     const imInCheck = turn === myColor;

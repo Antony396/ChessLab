@@ -101,6 +101,17 @@
   background: var(--hc-surface-strong);
 }
 
+.resign-btn:hover {
+  border-color: var(--hc-danger);
+  color: var(--hc-danger);
+}
+
+.resign-btn.confirming {
+  border-color: var(--hc-danger);
+  color: var(--hc-danger);
+  background: rgba(220, 80, 70, 0.12);
+}
+
 /* Specificity bumped (.custom-play .custom-play-board, not just
    .custom-play-board) so this reliably wins over the generic .board-wrap
    rule in App.css (max-width: 420px, left over from the original analyzer
@@ -318,10 +329,100 @@
   background: var(--hc-surface);
   backdrop-filter: blur(8px);
   border-radius: var(--hc-radius);
-  padding: 14px 16px;
-  margin-bottom: 12px;
+  padding: 36px 24px;
+  margin: 24px auto;
+  max-width: 440px;
   font-size: 13px;
   color: var(--hc-text-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.online-waiting-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hc-danger);
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+.online-waiting-dot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+}
+
+.online-waiting-spinner {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.online-waiting-spinner span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--hc-gold);
+  animation: online-waiting-bounce 1.1s ease-in-out infinite;
+}
+
+.online-waiting-spinner span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.online-waiting-spinner span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes online-waiting-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.online-waiting-title {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: 0.5px;
+  margin: 0 0 6px;
+  background: linear-gradient(135deg, #fff 0%, var(--hc-gold) 60%, var(--hc-gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.online-waiting-subtitle {
+  margin: 0 0 14px;
+  color: var(--hc-text);
+  max-width: 340px;
+}
+
+.online-waiting-elapsed {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: var(--hc-text);
+  margin: 0 0 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.online-waiting-hint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--hc-text);
 }
 
 .online-waiting-link-row {
@@ -329,6 +430,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+  width: 100%;
 }
 
 .online-waiting-link {

@@ -43,6 +43,7 @@ from app.custom_chess.models import (
     OnlineMoveRequest,
     OnlineRoomCreateResponse,
     OnlineRoomJoinRequest,
+    ResignRequest,
 )
 from app.custom_chess.ws_manager import manager
 
@@ -176,18 +177,55 @@ async def online_move(payload: OnlineMoveRequest):
     game.action_log.append(log_entry)
     game.status = _compute_status(game)
 
-    # ELO only ever applies to a real game between two known accounts (see
-    # CustomGame.white_user_id/black_user_id) - a vs_ai/local-sandbox game,
-    # or an online game where either side never linked an account, leaves
-    # both None and this is a no-op. Deliberately NOT read back into the
-    # broadcast state below - see db.py's own note on why _to_state stays
-    # elo-free on this hot a path (every move, every reconnect).
-    if game.status != "in_progress" and game.white_user_id and game.black_user_id:
+    if game.status != "in_progress":
         result = "draw"
         if game.status == "checkmate":
             result = "white" if mover_color == chess.WHITE else "black"
-        db.apply_elo_result(game.white_user_id, game.black_user_id, result)
-        db.award_currency_for_win(game.white_user_id, game.black_user_id, result)
+        _apply_game_end_rewards(game, result)
+
+    state = _to_state(game)
+    await manager.broadcast(payload.game_id, state.model_dump())
+    return state
+
+
+def _apply_game_end_rewards(game: store.CustomGame, result: str) -> None:
+    """ELO + currency only ever apply to a real game between two known
+    accounts (see CustomGame.white_user_id/black_user_id) - a vs_ai/local-
+    sandbox game, or an online game where either side never linked an
+    account, leaves at least one None and this is a no-op. `result` is
+    "white" | "black" | "draw", same convention as db.py's own
+    apply_elo_result/award_currency_for_win. Shared by online_move
+    (checkmate/stalemate/draw) and resign below, rather than duplicating
+    this same guard-and-call pair in both."""
+    if not (game.white_user_id and game.black_user_id):
+        return
+    db.apply_elo_result(game.white_user_id, game.black_user_id, result)
+    db.award_currency_for_win(game.white_user_id, game.black_user_id, result)
+
+
+@router.post("/online/resign", response_model=CustomGameState)
+async def online_resign(payload: ResignRequest):
+    """Either player can give up an in-progress online game at any time -
+    the opponent is credited exactly like a checkmate win (ELO + currency),
+    since there's no real difference in outcome from their side. Broadcasts
+    the resulting state the same way a real move does, so the opponent's
+    board updates live instead of needing to poll or refresh."""
+    game = store.get_game(payload.game_id)
+    if game is None:
+        raise HTTPException(404, "Game not found")
+    if game.status != "in_progress":
+        raise HTTPException(400, f"Game is already over ({game.status})")
+    if payload.player_token == game.white_token:
+        resigning_color = chess.WHITE
+    elif payload.player_token == game.black_token:
+        resigning_color = chess.BLACK
+    else:
+        raise HTTPException(403, "Invalid token")
+
+    game.status = "resigned"
+    game.resigned_by = resigning_color
+    result = "black" if resigning_color == chess.WHITE else "white"
+    _apply_game_end_rewards(game, result)
 
     state = _to_state(game)
     await manager.broadcast(payload.game_id, state.model_dump())
