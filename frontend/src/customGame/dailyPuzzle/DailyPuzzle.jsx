@@ -12,9 +12,9 @@ const SHOOT_RING_STYLE = { boxShadow: "inset 0 0 0 4px rgba(200,60,30,0.6)" };
 const CORRECT_FLASH_MS = 260;
 const WRONG_FLASH_MS = 320;
 
-// A new, hand-authored puzzle every day - unlike Puzzle Rush's static pool
-// of plain-chess puzzles, this one features the hero pieces and is the
-// same position for everyone (see backend's daily_puzzle_routes.py).
+// A new, hand-authored puzzle every day - unlike the Puzzle Map's static
+// route of plain-chess puzzles, this one features the hero pieces and is
+// the same position for everyone (see backend's daily_puzzle_routes.py).
 // Solving it extends a daily streak; streak-gated skins check that streak
 // (see skinStore.js's requiresStreak / SkinsPanel.jsx).
 export default function DailyPuzzle({ token, onExit }) {

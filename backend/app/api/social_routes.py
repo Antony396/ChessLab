@@ -39,6 +39,7 @@ from app.social.models import (
     LoginRequest,
     RegisterRequest,
     SendFriendRequestPayload,
+    SetSkinRequest,
     SimulRespondRequest,
     SimulSubmitRequest,
     UserPublic,
@@ -52,7 +53,13 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
 
 
 def _user_public(row) -> UserPublic:
-    return UserPublic(id=row["id"], username=row["username"], elo=row.get("elo", db.DEFAULT_ELO))
+    return UserPublic(
+        id=row["id"],
+        username=row["username"],
+        elo=row.get("elo", db.DEFAULT_ELO),
+        currency=row.get("currency", 0),
+        equipped_skin=row.get("equipped_skin") or db.DEFAULT_EQUIPPED_SKIN,
+    )
 
 
 # --- Registration / login ---------------------------------------------------
@@ -94,7 +101,13 @@ def leaderboard(limit: int = 20, user_id: str = Depends(get_current_user_id)):
     request."""
     rows = db.get_leaderboard(limit)
     entries = [
-        LeaderboardEntry(rank=i + 1, id=row["id"], username=row["username"], elo=row["elo"])
+        LeaderboardEntry(
+            rank=i + 1,
+            id=row["id"],
+            username=row["username"],
+            elo=row["elo"],
+            equipped_skin=row.get("equipped_skin") or db.DEFAULT_EQUIPPED_SKIN,
+        )
         for i, row in enumerate(rows)
     ]
     return LeaderboardResponse(
@@ -116,6 +129,20 @@ def me(user_id: str = Depends(get_current_user_id)):
     row = db.get_user_by_id(user_id)
     if row is None:
         raise HTTPException(404, "User not found")
+    return _user_public(row)
+
+
+@router.post("/me/skin", response_model=UserPublic)
+def set_my_skin(payload: SetSkinRequest, user_id: str = Depends(get_current_user_id)):
+    """Persists the equipped King skin server-side (see db.py's
+    equipped_skin column) - localStorage alone (skinStore.js) only ever
+    answers "what does the skin picker show ME", not "what does everyone
+    else see this account wearing" (the leaderboard, a dorm/Commons visit).
+    No validation against the frontend's KING_SKINS registry - an
+    unrecognized key just renders as the classic skin wherever it's shown,
+    same fallback every other skin lookup in this app already uses."""
+    db.set_equipped_skin(user_id, payload.skin)
+    row = db.get_user_by_id(user_id)
     return _user_public(row)
 
 

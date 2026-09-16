@@ -13,6 +13,7 @@ import {
 } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
+import { sendFriendRequest } from "../social/api";
 import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
 
@@ -31,15 +32,45 @@ function FriendsIcon() {
 // handling, no click-to-move, just rendered at their last-known position
 // (see social/usePresence.js). Exported for CommonsWorld.jsx to reuse -
 // occupant rendering is identical there, just a different shared room.
-export function RemoteAvatar({ occupant, bubbleText }) {
+//
+// Clicking it sends a friend request (token/myUserId are optional - a
+// caller with neither just gets the old read-only behavior back). A bot
+// (see social/bots.py) has no real account row to friend at all, and
+// clicking yourself makes no sense either, so both are excluded up front
+// rather than letting the request round-trip just to 404/400.
+export function RemoteAvatar({ occupant, bubbleText, token, myUserId }) {
   const skin = KING_SKINS[occupant.skin] || KING_SKINS.classic;
   const style = { transform: `translate(${occupant.x * TILE_SIZE}px, ${occupant.y * TILE_SIZE}px)` };
+  const [friendStatus, setFriendStatus] = useState("idle"); // "idle" | "sending" | "sent" | "error"
+  const isBot = occupant.user_id?.startsWith("bot-");
+  const isSelf = occupant.user_id === myUserId;
+  const canAddFriend = Boolean(token) && !isBot && !isSelf;
+
+  function handleClick() {
+    if (!canAddFriend || friendStatus !== "idle") return;
+    setFriendStatus("sending");
+    sendFriendRequest(token, occupant.user_id)
+      .then(() => setFriendStatus("sent"))
+      .catch(() => setFriendStatus("error"))
+      .finally(() => {
+        window.setTimeout(() => setFriendStatus("idle"), 2200);
+      });
+  }
+
   return (
-    <div className={`hub-avatar facing-${occupant.facing || "down"} remote`} style={style}>
+    <div
+      className={`hub-avatar facing-${occupant.facing || "down"} remote${canAddFriend ? " addable" : ""}`}
+      style={style}
+      onClick={canAddFriend ? handleClick : undefined}
+      role={canAddFriend ? "button" : undefined}
+      title={canAddFriend ? `Click to add ${occupant.username} as a friend` : undefined}
+    >
       {bubbleText && <SpeechBubble text={bubbleText} />}
       <img src={skin.src} alt="" className="hub-avatar-img" draggable={false} />
       <div className="hub-avatar-shadow" />
       <span className="hub-avatar-nameplate">{occupant.username}</span>
+      {friendStatus === "sent" && <span className="hub-avatar-friend-toast">Friend request sent</span>}
+      {friendStatus === "error" && <span className="hub-avatar-friend-toast error">Couldn't add friend</span>}
     </div>
   );
 }
@@ -113,8 +144,9 @@ function PedestalProp() {
   );
 }
 
-// The Puzzle Rush counterpart, mirrored on the right side of the room -
+// The puzzle stand's own pedestal, mirrored on the right side of the room -
 // same treatment as PedestalProp (real furniture, not an icon-in-a-box).
+// Opens the choice between the Daily Puzzle and the Puzzle Map.
 function PuzzlePedestalProp() {
   return (
     <div className="puzzle-pedestal-prop">
@@ -132,7 +164,10 @@ function PuzzlePedestalProp() {
 // frame regardless of each skin's proportions. Rendered outside
 // .hub-room-wrap (see the component below) so its `position: fixed` is
 // anchored to the real page edge, not to that wrapper's own transform.
-function PlayerProfileBadge({ username }) {
+// Exported for CommonsWorld.jsx to reuse - your own profile picture and
+// skin picker shouldn't disappear just because you walked into a shared
+// room that owns no stations of its own.
+export function PlayerProfileBadge({ username }) {
   const equipped = useEquippedSkin();
   return (
     <div className="hub-profile-badge-wrap">
@@ -148,8 +183,10 @@ function PlayerProfileBadge({ username }) {
 // anchored to the real page edge for the same reason PlayerProfileBadge
 // is - see its comment above). Opens the shared station-overlay chrome
 // (see HeroChessApp.jsx's SkinsPanel branch) rather than its own inline
-// dropdown - a proper gallery to browse/compare skins in, not a cramped list.
-function SkinButton({ onClick }) {
+// dropdown - a proper gallery to browse/compare skins in, not a cramped
+// list. Exported for CommonsWorld.jsx to reuse - see PlayerProfileBadge's
+// own comment on why.
+export function SkinButton({ onClick }) {
   const equipped = useEquippedSkin();
   return (
     <div className="hub-skin-picker">
@@ -174,24 +211,6 @@ function LogoutButton({ onClick }) {
   return (
     <button type="button" className="hub-logout-btn" onClick={onClick} title="Log out">
       Log Out
-    </button>
-  );
-}
-
-function PuzzleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 9a2 2 0 0 1 2-2h1.2a1.8 1.8 0 1 0 0-3.4V3a2 2 0 0 1 2-2h1.6a2 2 0 0 1 2 2v.6a1.8 1.8 0 1 0 0 3.4H14a2 2 0 0 1 2 2v1.2a1.8 1.8 0 1 1 0 3.6V11" />
-      <path d="M4 9v6a2 2 0 0 0 2 2h1.2a1.8 1.8 0 1 1 0 3.4V21a2 2 0 0 0 2 2h1.6a2 2 0 0 0 2-2v-.6a1.8 1.8 0 1 1 3.4 0 2 2 0 0 0 2-2v-4" />
-    </svg>
-  );
-}
-
-function PuzzleRushButton({ onClick }) {
-  return (
-    <button type="button" className="hub-friends-toggle" onClick={onClick} title="Puzzle Rush">
-      <PuzzleIcon />
-      <span>Puzzles</span>
     </button>
   );
 }
@@ -228,11 +247,13 @@ function VisitingBanner({ username, onReturnHome }) {
 export default function HubWorld({
   hub,
   username,
+  token,
+  myUserId,
   presence,
   visiting,
   onReturnHome,
   onOpenFriends,
-  onOpenPuzzleRush,
+  onOpenPuzzles,
   onOpenSkins,
   onOpenLeaderboard,
   onOpenCommons,
@@ -279,7 +300,7 @@ export default function HubWorld({
   // "E to interact" - the keyboard-native counterpart to clicking a
   // pedestal directly, active only while standing next to one (and, for
   // the PvP pedestal, only in your own dorm - see VisitingBanner above;
-  // the Puzzle Rush pedestal and the leaderboard have no such ambiguity, so
+  // the puzzle pedestal and the leaderboard have no such ambiguity, so
   // they work while visiting too, same as the side-panel Puzzles button).
   // Skipped while the chat input (or any other input/textarea) has focus,
   // so typing the letter "e" in a message never also pops an overlay open.
@@ -289,7 +310,7 @@ export default function HubWorld({
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!isVisiting && hub.isNearPedestal) hub.setActiveOverlay("match-queue");
-      else if (hub.isNearPuzzlePedestal) onOpenPuzzleRush();
+      else if (hub.isNearPuzzlePedestal) onOpenPuzzles();
       else if (hub.isNearLeaderboard) onOpenLeaderboard();
       else if (!isVisiting && hub.isNearDoor) onOpenCommons();
     }
@@ -302,7 +323,7 @@ export default function HubWorld({
     hub.isNearDoor,
     hub.setActiveOverlay,
     isVisiting,
-    onOpenPuzzleRush,
+    onOpenPuzzles,
     onOpenLeaderboard,
     onOpenCommons,
   ]);
@@ -331,7 +352,6 @@ export default function HubWorld({
         <PlayerProfileBadge username={username} />
         <SkinButton onClick={onOpenSkins} />
         <FriendsButton onClick={onOpenFriends} />
-        <PuzzleRushButton onClick={onOpenPuzzleRush} />
         <LogoutButton onClick={onLogout} />
       </div>
       <div className="hub-room-wrap">
@@ -378,11 +398,11 @@ export default function HubWorld({
               tile={PUZZLE_PEDESTAL_TILE}
               tileSize={TILE_SIZE}
               isNear={hub.isNearPuzzlePedestal}
-              label="Puzzle Rush"
+              label="Puzzles"
               promptLabel="Click or press E"
               variant="puzzle-pedestal"
               icon={<PuzzlePedestalProp />}
-              onActivate={onOpenPuzzleRush}
+              onActivate={onOpenPuzzles}
             />
 
             <InteractiveTrigger
@@ -401,6 +421,8 @@ export default function HubWorld({
                 key={occupant.user_id}
                 occupant={occupant}
                 bubbleText={presence.chatBubbles[occupant.user_id]?.text}
+                token={token}
+                myUserId={myUserId}
               />
             ))}
 
@@ -422,7 +444,7 @@ export default function HubWorld({
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}
           {isVisiting
             ? "This is someone else's dorm - just visiting."
-            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for Puzzle Rush and the Daily Puzzle."}
+            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for the Daily Puzzle and the Puzzle Map."}
         </p>
       </div>
     </>

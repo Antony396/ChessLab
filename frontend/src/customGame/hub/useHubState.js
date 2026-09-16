@@ -23,7 +23,7 @@ export const TILE_SIZE = 72;
 // hubWorld.css's .hub-room background-size:cover comment for how that
 // boundary maps into this grid's pixel space.
 export const PEDESTAL_TILE = { x: 2, y: 4 };
-// The Puzzle Rush pedestal - mirrored on the right side of the room,
+// The puzzle stand's pedestal - mirrored on the right side of the room,
 // symmetric with PEDESTAL_TILE on the left, and interacted with the same
 // way (see isBlocked below and HubWorld.jsx's InteractiveTrigger for it).
 export const PUZZLE_PEDESTAL_TILE = { x: 12, y: 4 };

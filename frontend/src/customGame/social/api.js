@@ -47,6 +47,14 @@ export function fetchLeaderboard(token) {
   return fetch(`${API_BASE}/leaderboard`, { headers: authHeaders(token) }).then(handle);
 }
 
+export function postEquippedSkin(token, skin) {
+  return fetch(`${API_BASE}/me/skin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ skin }),
+  }).then(handle);
+}
+
 export function sendFriendRequest(token, toUserId) {
   return fetch(`${API_BASE}/friends/request`, {
     method: "POST",

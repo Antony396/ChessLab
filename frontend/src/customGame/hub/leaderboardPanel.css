@@ -75,3 +75,37 @@
   flex: none;
   font-weight: 600;
 }
+
+.leaderboard-skin-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.leaderboard-skin-img.first {
+  width: 34px;
+  height: 34px;
+  box-shadow: 0 0 0 2px var(--hc-gold);
+}
+
+.leaderboard-row.top-ten {
+  background: rgba(245, 197, 66, 0.06);
+}
+
+.leaderboard-row.first {
+  background: rgba(245, 197, 66, 0.16);
+  border: 1px solid var(--hc-gold);
+}
+
+.leaderboard-crown,
+.leaderboard-top-ten-badge {
+  flex: none;
+  font-size: 13px;
+}
+
+.leaderboard-top-ten-badge {
+  color: var(--hc-gold);
+}

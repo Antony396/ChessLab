@@ -7,7 +7,7 @@ from app.api.custom_game_routes import router as custom_game_router
 from app.api.daily_puzzle_routes import router as daily_puzzle_router
 from app.api.deck_routes import router as deck_router
 from app.api.online_game_routes import router as online_game_router
-from app.api.puzzle_rush_routes import router as puzzle_rush_router
+from app.api.puzzle_map_routes import router as puzzle_map_router
 from app.api.routes import router
 from app.api.social_routes import router as social_router
 from app.custom_chess.ai import shutdown_engine
@@ -54,6 +54,6 @@ app.include_router(router, prefix="/api")
 app.include_router(custom_game_router, prefix="/api/game")
 app.include_router(online_game_router, prefix="/api/game")
 app.include_router(social_router, prefix="/api/social")
-app.include_router(puzzle_rush_router, prefix="/api/puzzle-rush")
+app.include_router(puzzle_map_router, prefix="/api")
 app.include_router(deck_router, prefix="/api/decks")
 app.include_router(daily_puzzle_router, prefix="/api")

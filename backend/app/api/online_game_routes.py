@@ -187,6 +187,7 @@ async def online_move(payload: OnlineMoveRequest):
         if game.status == "checkmate":
             result = "white" if mover_color == chess.WHITE else "black"
         db.apply_elo_result(game.white_user_id, game.black_user_id, result)
+        db.award_currency_for_win(game.white_user_id, game.black_user_id, result)
 
     state = _to_state(game)
     await manager.broadcast(payload.game_id, state.model_dump())

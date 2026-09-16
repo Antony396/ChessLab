@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { pieceImageSrc } from "../pieces/flat2dPieces";
+import { postEquippedSkin } from "./social/api";
 
 // Cosmetic King skins - shared by the hub avatar, the deck builder's King
 // card/slot, and the actual game board. One registry, one source of truth:
@@ -31,6 +32,12 @@ import { pieceImageSrc } from "../pieces/flat2dPieces";
 // No entry actually sets this yet - it's foundation for whenever a
 // streak-reward skin's art exists; isSkinUnlocked below is what any new
 // entry should be checked against, not this field directly.
+//
+// requiresMapProgress (optional): a Puzzle Map progress-gated skin - the
+// backend tracks each account's solved node count out of MAP_LENGTH (see
+// app/puzzle_map/store.py / db.py's map_puzzle_progress table). The Hydra
+// skin below is the first (and so far only) one gated this way: reaching
+// node 50 - the map's hand-authored Hydra finale - unlocks it.
 export const KING_SKINS = {
   classic: {
     name: "Classic King",
@@ -87,6 +94,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/hydra-king.png",
     whiteTeamSrc: "/pieces/avatars/hydra-king-white.png",
     headSrc: "/pieces/avatars/hydra-king-head.png",
+    requiresMapProgress: 50,
   },
   dragonKing: {
     name: "Dragon King",
@@ -151,23 +159,38 @@ export function getEquippedSkin() {
   return equippedSkin;
 }
 
-// currentStreak is optional - callers with no streak info yet (or an
-// anonymous/not-yet-fetched context) can omit it, which locks every
-// requiresStreak skin by default rather than guessing they're unlocked.
-export function isSkinUnlocked(key, currentStreak = 0) {
+// `progress` is optional - callers with no progress info yet (or an
+// anonymous/not-yet-fetched context) can omit either field, which locks
+// every gated skin by default rather than guessing it's unlocked.
+export function isSkinUnlocked(key, progress = {}) {
   const skin = KING_SKINS[key];
   if (!skin) return false;
-  return !skin.requiresStreak || currentStreak >= skin.requiresStreak;
+  const { streak = 0, mapSolved = 0 } = progress;
+  if (skin.requiresStreak && streak < skin.requiresStreak) return false;
+  if (skin.requiresMapProgress && mapSolved < skin.requiresMapProgress) return false;
+  return true;
 }
 
-export function setEquippedSkin(key, currentStreak = 0) {
+// `token`, when given, also persists the choice server-side (see
+// social/api.js's postEquippedSkin / db.py's equipped_skin column) - the
+// one thing localStorage alone can never do, since it can't answer "what
+// does this OTHER account have on" for the leaderboard or a dorm/Commons
+// visit. Fire-and-forget: a failed persist just means other viewers see a
+// stale skin until the next successful equip, not a broken local UX, so
+// it's not awaited and its error is swallowed rather than surfaced here.
+export function setEquippedSkin(key, progress = {}, token = null) {
   if (!KING_SKINS[key] || key === equippedSkin) return;
-  if (!isSkinUnlocked(key, currentStreak)) return;
+  if (!isSkinUnlocked(key, progress)) return;
   equippedSkin = key;
   try {
     localStorage.setItem(STORAGE_KEY, key);
   } catch {
     // fine to just not persist it
+  }
+  if (token) {
+    postEquippedSkin(token, key).catch(() => {
+      // Not fatal - see this function's own comment above.
+    });
   }
   listeners.forEach((notify) => notify());
 }

@@ -19,6 +19,8 @@ class UserPublic(BaseModel):
     id: str
     username: str
     elo: int = 1000
+    currency: int = 0
+    equipped_skin: str = "classic"
 
 
 class AuthResponse(BaseModel):
@@ -45,6 +47,11 @@ class LeaderboardEntry(BaseModel):
     id: str
     username: str
     elo: int
+    equipped_skin: str = "classic"
+
+
+class SetSkinRequest(BaseModel):
+    skin: str
 
 
 class LeaderboardResponse(BaseModel):

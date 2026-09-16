@@ -1,19 +1,19 @@
-"""Puzzle content and live Puzzle Rush sessions.
+"""The shared Lichess tactics pool: a CC0-licensed sample of 1000 real
+puzzles (see data/lichess_puzzles.csv) - standard chess only, unrelated to
+Evo Chess's hero pieces, since no dataset (or realistic way to hand-build
+one at any real scale) exists for those. Loaded into memory once at import
+time and never mutated.
 
-Puzzle data is a CC0-licensed sample of 1000 real Lichess puzzles (see
-data/lichess_puzzles.csv) - standard chess only, unrelated to Evo Chess's
-hero pieces, since no dataset (or realistic way to hand-build one at any
-real scale) exists for those. Loaded into memory once at import time and
-never mutated; sessions are in-memory too and don't survive a restart,
-same tradeoff the rest of this app's live/ephemeral state already makes.
+Originally backed the timed Puzzle Rush mode; that mode is gone (see
+puzzle_map/store.py, which replaced it with a 50-node progression map), but
+this pool of puzzles - sorted by rating - is exactly what that map draws
+its plain-chess nodes from, so the loader stays here rather than getting
+duplicated.
 """
 
 from __future__ import annotations
 
 import csv
-import random
-import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -73,66 +73,3 @@ def puzzle_at(index: int) -> Optional[Puzzle]:
     if 0 <= index < len(_PUZZLES):
         return _PUZZLES[index]
     return None
-
-
-def pick_start_index() -> int:
-    # Starting somewhere in the easier third (rather than always at the
-    # very bottom) means a run still naturally ramps up in difficulty as
-    # it goes, while varying between runs instead of opening on the exact
-    # same puzzle every time.
-    easy_ceiling = max(1, len(_PUZZLES) // 3)
-    return random.randint(0, easy_ceiling - 1)
-
-
-@dataclass
-class RushSession:
-    id: str
-    user_id: str
-    duration_seconds: int
-    started_at: float
-    puzzle_index: int
-    board: chess.Board  # current position within the current puzzle
-    remaining_moves: list[str]  # this puzzle's not-yet-played solution moves
-    score: int = 0
-    finished: bool = False
-
-
-_SESSIONS: dict[str, RushSession] = {}
-
-
-def create_session(user_id: str, duration_seconds: int) -> RushSession:
-    start_index = pick_start_index()
-    puzzle = puzzle_at(start_index)
-    session = RushSession(
-        id=uuid.uuid4().hex,
-        user_id=user_id,
-        duration_seconds=duration_seconds,
-        started_at=time.time(),
-        puzzle_index=start_index,
-        board=chess.Board(puzzle.start_fen),
-        remaining_moves=list(puzzle.solution_moves),
-    )
-    _SESSIONS[session.id] = session
-    return session
-
-
-def get_session(session_id: str) -> Optional[RushSession]:
-    return _SESSIONS.get(session_id)
-
-
-def time_remaining(session: RushSession) -> float:
-    elapsed = time.time() - session.started_at
-    return max(0.0, session.duration_seconds - elapsed)
-
-
-def advance_to_next_puzzle(session: RushSession) -> Puzzle:
-    session.puzzle_index += 1
-    puzzle = puzzle_at(session.puzzle_index)
-    if puzzle is None:
-        # Ran past the end of the pool (only realistic for an extremely
-        # fast run) - loop back to the start rather than error out.
-        session.puzzle_index = 0
-        puzzle = puzzle_at(0)
-    session.board = chess.Board(puzzle.start_fen)
-    session.remaining_moves = list(puzzle.solution_moves)
-    return puzzle

@@ -1,5 +1,5 @@
 const API_ROOT = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-const API_BASE = `${API_ROOT}/api/puzzle-rush`;
+const API_BASE = `${API_ROOT}/api`;
 
 async function handle(res) {
   if (!res.ok) {
@@ -19,16 +19,20 @@ function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export function postStartRush(token, durationSeconds) {
-  return fetch(`${API_BASE}/start`, {
+export function fetchMapState(token) {
+  return fetch(`${API_BASE}/puzzle-map/state`, { headers: authHeaders(token) }).then(handle);
+}
+
+export function startMapPuzzle(token, index) {
+  return fetch(`${API_BASE}/puzzle-map/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(token) },
-    body: JSON.stringify({ duration_seconds: durationSeconds }),
+    body: JSON.stringify({ index }),
   }).then(handle);
 }
 
-export function postRushMove(token, payload) {
-  return fetch(`${API_BASE}/move`, {
+export function postMapPuzzleMove(token, payload) {
+  return fetch(`${API_BASE}/puzzle-map/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(payload),

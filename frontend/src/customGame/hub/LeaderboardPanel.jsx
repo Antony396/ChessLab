@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchLeaderboard } from "../social/api";
+import { KING_SKINS } from "../skinStore";
 import "./leaderboardPanel.css";
 
 // The Leaderboard station: top players by ELO (see backend's db.py -
@@ -28,6 +29,14 @@ export default function LeaderboardPanel({ token, myUserId }) {
   if (!data) return <p className="leaderboard-loading">Loading…</p>;
 
   const onTheList = data.entries.some((entry) => entry.id === myUserId);
+  // The top 10% of whatever's actually on screen (the top-N list, not the
+  // whole userbase - the backend doesn't return a total account count) -
+  // always at least 1, so a short list still highlights its own #1.
+  const topTenPercentCutoff = Math.max(1, Math.ceil(data.entries.length * 0.1));
+
+  function skinFor(key) {
+    return KING_SKINS[key] || KING_SKINS.classic;
+  }
 
   return (
     <div className="leaderboard-panel">
@@ -35,13 +44,29 @@ export default function LeaderboardPanel({ token, myUserId }) {
         ELO updates after a real online match ends - vs Computer games don't count. Everyone starts at 1000.
       </p>
       <ol className="leaderboard-list">
-        {data.entries.map((entry) => (
-          <li key={entry.id} className={`leaderboard-row${entry.id === myUserId ? " me" : ""}`}>
-            <span className="leaderboard-rank">#{entry.rank}</span>
-            <span className="leaderboard-username">{entry.username}</span>
-            <span className="leaderboard-elo">{entry.elo}</span>
-          </li>
-        ))}
+        {data.entries.map((entry) => {
+          const isFirst = entry.rank === 1;
+          const isTopTen = entry.rank <= topTenPercentCutoff;
+          return (
+            <li
+              key={entry.id}
+              className={`leaderboard-row${entry.id === myUserId ? " me" : ""}${isFirst ? " first" : ""}${
+                isTopTen ? " top-ten" : ""
+              }`}
+            >
+              <span className="leaderboard-rank">#{entry.rank}</span>
+              <img
+                src={skinFor(entry.equipped_skin).src}
+                alt=""
+                className={`leaderboard-skin-img${isFirst ? " first" : ""}`}
+              />
+              <span className="leaderboard-username">{entry.username}</span>
+              {isFirst && <span className="leaderboard-crown" title="#1">👑</span>}
+              {!isFirst && isTopTen && <span className="leaderboard-top-ten-badge" title="Top 10%">★</span>}
+              <span className="leaderboard-elo">{entry.elo}</span>
+            </li>
+          );
+        })}
       </ol>
       {!onTheList && data.my_rank && (
         <div className="leaderboard-me-row">

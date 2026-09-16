@@ -1,0 +1,237 @@
+/* Mirrors dailyPuzzle.css's structure/tokens closely for the toolbar/board
+   states; the route view below is new. */
+.puzzle-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.puzzle-map-menu {
+  max-width: 420px;
+  margin: 40px auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.puzzle-map-menu h1 {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+  background: linear-gradient(135deg, #fff 0%, var(--hc-gold) 60%, var(--hc-gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.puzzle-map-menu p {
+  color: var(--hc-text);
+  margin: 0;
+}
+
+.puzzle-map-back-btn {
+  margin-top: 4px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.puzzle-map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 480px;
+  justify-content: space-between;
+}
+
+.puzzle-map-node-label {
+  font-weight: 600;
+  color: var(--hc-text);
+  font-size: 13px;
+}
+
+.puzzle-map-toolbar button {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 16px;
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-radius-sm);
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  cursor: pointer;
+}
+
+.puzzle-map-board-wrap {
+  width: 100%;
+  max-width: 480px;
+  border-radius: 6px;
+  transition: box-shadow 0.15s ease;
+}
+
+.puzzle-map-board-wrap.flash-correct {
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.7);
+}
+
+.puzzle-map-board-wrap.flash-wrong {
+  box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.7);
+}
+
+.puzzle-map-unlock-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-gold);
+  background: rgba(230, 190, 90, 0.1);
+}
+
+.puzzle-map-unlock-img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.puzzle-map-unlock-banner p {
+  color: var(--hc-gold);
+  font-weight: 700;
+}
+
+/* --- The route: a horizontally-scrolling, snap-scrolled strip of nodes so
+   only a handful are ever visible at real size (the "zoom") rather than
+   showing all 50 nodes shrunk down at once. --map-node-slot is the total
+   width each node "owns" (circle + connector); five of them roughly fill
+   the same 480px width the puzzle board itself uses, so the two views feel
+   like the same object. */
+.puzzle-map-viewport {
+  --map-node-slot: 96px;
+  width: 100%;
+  max-width: 480px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 24px 0;
+}
+
+.puzzle-map-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  padding: 0 calc(var(--map-node-slot) / 2);
+}
+
+.puzzle-map-node-wrap {
+  display: flex;
+  align-items: center;
+  scroll-snap-align: center;
+}
+
+.puzzle-map-connector {
+  width: calc(var(--map-node-slot) - 56px);
+  height: 0;
+  border-top: 3px dotted var(--hc-border-strong);
+  flex-shrink: 0;
+}
+
+.puzzle-map-connector.filled {
+  border-top-color: var(--hc-gold);
+}
+
+.puzzle-map-node {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 3px solid var(--hc-border-strong);
+  background: var(--hc-surface);
+  color: var(--hc-text-h);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+}
+
+.puzzle-map-node:not(:disabled):hover {
+  transform: scale(1.08);
+}
+
+.puzzle-map-node.solved {
+  border-color: var(--hc-gold);
+  background: rgba(230, 190, 90, 0.15);
+}
+
+.puzzle-map-node.locked {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.puzzle-map-node.finale {
+  width: 72px;
+  height: 72px;
+  border-color: var(--hc-gold);
+  box-shadow: 0 0 14px rgba(230, 190, 90, 0.5);
+}
+
+.puzzle-map-node-number {
+  pointer-events: none;
+}
+
+.puzzle-map-finale-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.puzzle-map-node-check {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  background: var(--hc-gold);
+  color: #1a1a1a;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.puzzle-map-node-lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+}
+
+.puzzle-map-node-star {
+  position: absolute;
+  top: -10px;
+  right: -6px;
+  font-size: 16px;
+  color: var(--hc-gold);
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
+}

@@ -131,6 +131,10 @@ def init_db() -> None:
             longest_streak INTEGER NOT NULL DEFAULT 0,
             last_solved_date TEXT
         );
+        CREATE TABLE IF NOT EXISTS map_puzzle_progress (
+            user_id TEXT PRIMARY KEY,
+            solved_json TEXT NOT NULL DEFAULT '[]'
+        );
         """
     )
     # A plain ALTER rather than folding this into the users table's own
@@ -140,6 +144,14 @@ def init_db() -> None:
     # before this feature existed. IF NOT EXISTS makes it safe to run again
     # every startup, same as the CREATE TABLEs above.
     conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS elo INTEGER NOT NULL DEFAULT 1000;")
+    # currency: the win-reward balance (see award_currency_for_win) - a
+    # separate concept from elo, which only ever tracks skill/rank.
+    conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS currency INTEGER NOT NULL DEFAULT 0;")
+    # equipped_skin: mirrors the frontend's own skinStore.js local choice,
+    # persisted here too so OTHER users (the leaderboard, a dorm visit) can
+    # see what King skin someone has on - local-only storage has no way to
+    # answer "what does this other player look like" for anyone but you.
+    conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_skin TEXT NOT NULL DEFAULT 'classic';")
     conn.commit()
 
 
@@ -420,9 +432,62 @@ def apply_elo_result(white_user_id: str, black_user_id: str, result: str) -> tup
     return new_white_elo, new_black_elo
 
 
+# --- Currency ---
+#
+# A separate reward balance from elo (which only ever tracks skill/rank) -
+# awarded for actually winning, not for playing well in a game you lost.
+# Same scope as elo: only a real online game between two known accounts
+# (see online_game_routes.py's online_move, right next to its own
+# apply_elo_result call) ever moves this - vs_ai/local-sandbox play doesn't.
+# No spending mechanism exists yet; this is just the earning side.
+
+CURRENCY_PER_WIN = 10
+
+
+def get_currency(user_id: str) -> int:
+    row = get_conn().execute("SELECT currency FROM users WHERE id = %s", (user_id,)).fetchone()
+    return row["currency"] if row else 0
+
+
+def add_currency(user_id: str, amount: int) -> int:
+    conn = get_conn()
+    conn.execute("UPDATE users SET currency = currency + %s WHERE id = %s", (amount, user_id))
+    conn.commit()
+    return get_currency(user_id)
+
+
+def award_currency_for_win(white_user_id: str, black_user_id: str, result: str) -> None:
+    """`result` is "white" | "black" | "draw", same as apply_elo_result's own
+    - only the actual winner gets anything; a draw pays out nothing to
+    either side."""
+    if result == "white":
+        add_currency(white_user_id, CURRENCY_PER_WIN)
+    elif result == "black":
+        add_currency(black_user_id, CURRENCY_PER_WIN)
+
+
+# --- Equipped skin ---
+#
+# Mirrors the frontend's own skinStore.js local choice (localStorage,
+# per-browser) - persisted here too so OTHER users can see what King skin
+# someone has equipped (the leaderboard, a dorm/Commons visit), which local
+# storage alone could never answer for anyone but the viewer themselves.
+# Not validated against the frontend's KING_SKINS registry - an unrecognized
+# key just falls back to the classic skin wherever it's rendered, same as
+# an unrecognized bot skin already does (see social/bots.py).
+
+DEFAULT_EQUIPPED_SKIN = "classic"
+
+
+def set_equipped_skin(user_id: str, skin: str) -> None:
+    conn = get_conn()
+    conn.execute("UPDATE users SET equipped_skin = %s WHERE id = %s", (skin, user_id))
+    conn.commit()
+
+
 def get_leaderboard(limit: int = 20) -> list[dict]:
     return get_conn().execute(
-        "SELECT id, username, elo FROM users ORDER BY elo DESC, username_lower LIMIT %s", (limit,)
+        "SELECT id, username, elo, equipped_skin FROM users ORDER BY elo DESC, username_lower LIMIT %s", (limit,)
     ).fetchall()
 
 
@@ -515,3 +580,30 @@ def record_daily_solve(user_id: str, puzzle_date: str) -> dict:
     )
     conn.commit()
     return {"current_streak": new_current, "longest_streak": new_longest, "last_solved_date": puzzle_date}
+
+
+# --- Puzzle Map ---
+#
+# The 50-node puzzle progression (see app/puzzle_map/store.py for what each
+# node actually is) - just a permanent per-user set of solved node indices,
+# same durability tradeoff as the streak table above. Reaching node 50
+# unlocks the Hydra King skin (see frontend's skinStore.js).
+
+
+def get_map_progress(user_id: str) -> list[int]:
+    row = get_conn().execute(
+        "SELECT solved_json FROM map_puzzle_progress WHERE user_id = %s", (user_id,)
+    ).fetchone()
+    return json.loads(row["solved_json"]) if row else []
+
+
+def record_map_solve(user_id: str, index: int) -> list[int]:
+    solved = sorted(set(get_map_progress(user_id)) | {index})
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO map_puzzle_progress (user_id, solved_json) VALUES (%s, %s) "
+        "ON CONFLICT(user_id) DO UPDATE SET solved_json = excluded.solved_json",
+        (user_id, json.dumps(solved)),
+    )
+    conn.commit()
+    return solved

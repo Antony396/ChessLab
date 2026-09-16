@@ -393,7 +393,12 @@ function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra) {
   let destinations;
   try {
     destinations = scratch.moves({ square: fromSquare, verbose: true }).map((m) => m.to);
-  } catch {
+  } catch (err) {
+    console.warn("mirrorMimicDestinations: couldn't compute mimicked moves, showing no hints", {
+      fromSquare,
+      mimicType,
+      err,
+    });
     destinations = [];
   }
   if (mimicType === "n" && mimicIsHydra) {
@@ -423,7 +428,8 @@ export function computeLegalDestinations({
   let chess;
   try {
     chess = new Chess(fen);
-  } catch {
+  } catch (err) {
+    console.warn("computeLegalDestinations: couldn't load fen, showing no hints", { fen, square, err });
     return [];
   }
 
@@ -447,7 +453,13 @@ export function computeLegalDestinations({
     fenParts[1] = mover.color;
     try {
       chess = new Chess(fenParts.join(" "));
-    } catch {
+    } catch (err) {
+      console.warn("computeLegalDestinations: couldn't flip turn to preview off-turn piece, showing no hints", {
+        fen,
+        square,
+        moverColor: mover.color,
+        err,
+      });
       return [];
     }
   }

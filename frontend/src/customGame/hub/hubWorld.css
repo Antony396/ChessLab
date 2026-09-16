@@ -167,6 +167,38 @@
   filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.4)) brightness(0.92);
 }
 
+/* .hub-avatar is pointer-events:none by default (so it never blocks a
+   click-to-walk floor tile underneath it) - a clickable "add friend"
+   avatar needs that turned back on just for itself. */
+.hub-avatar.addable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.hub-avatar.addable:hover .hub-avatar-img {
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.4)) brightness(1.15);
+}
+
+.hub-avatar-friend-toast {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 22px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(245, 197, 66, 0.9);
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hub-avatar-friend-toast.error {
+  background: rgba(220, 80, 70, 0.9);
+  color: var(--hc-text-h);
+}
+
 .hub-avatar-nameplate {
   position: absolute;
   bottom: 100%;
@@ -421,7 +453,7 @@
   filter: drop-shadow(0 0 10px rgba(245, 197, 66, 0.7));
 }
 
-/* Puzzle Rush's pedestal - same treatment as the PvP one above, its own
+/* The puzzle stand's pedestal - same treatment as the PvP one above, its own
    classes since puzzle-pedestal.png has different proportions. */
 .puzzle-pedestal-prop {
   position: relative;
