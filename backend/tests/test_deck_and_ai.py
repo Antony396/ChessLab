@@ -26,7 +26,32 @@ def test_setup_auto_fills_black_back_rank_when_omitted(client):
     body = resp.json()
     assert body["vs_ai"] is True
     # black's rank 8 should be the standard formation - spot check via FEN
+    # (the g8 Knight is still literally a Knight in the FEN itself - see
+    # the archer_square assertion below for the actual hero tracking).
     assert body["fen"].split(" ")[0].startswith("rnbqkbnr")
+    # Regression coverage for "the custom AI never actually uses hero
+    # pieces" - hero_ai.py's whole search only activates once
+    # color_has_hero_pieces(game, BLACK) is true (see custom_ai_move), and
+    # a vs_ai game used to give the AI a completely plain standard army
+    # with no way to register ANY hero square for it at all, so that
+    # search was unreachable from the one button a player actually clicks.
+    # The AI's default deck now evolves its own kingside Knight into an
+    # Archer specifically so this is no longer true.
+    assert body["black_archer_square"] == "g8"
+
+
+def test_local_sandbox_mode_still_gets_a_plain_black_back_rank(client):
+    # vs_ai=False (the old local-sandbox mode) omitting black_back_rank has
+    # never meant "give it a hero deck" - just "nobody's specified black's
+    # side yet" - must stay exactly as before, unaffected by the vs_ai-only
+    # default-AI-deck change above.
+    resp = client.post(
+        "/api/game/custom-setup", json={"white_back_rank": BUDGET_WHITE_BACK_RANK, "vs_ai": False}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["vs_ai"] is False
+    assert body["black_archer_square"] is None
 
 
 def test_evolution_slot_requires_a_knight_or_bishop_there(client):
@@ -128,6 +153,31 @@ def test_ai_move_endpoint_replies_after_the_human_moves(client):
     assert body["turn"] == "white"
     assert len(body["action_log"]) == 2
     assert body["action_log"][1].endswith("(AI)")
+
+
+def test_ai_move_uses_the_hero_aware_search_not_stockfish(client, monkeypatch):
+    # Direct proof (not just "the endpoint didn't error") that a real
+    # vs_ai game - the one button a player actually clicks - reaches
+    # hero_ai.py's search rather than ai.py's Stockfish, now that the AI's
+    # default deck always gives it an Archer (see
+    # test_setup_auto_fills_black_back_rank_when_omitted's own comment for
+    # why that's what this whole fix was about). Failing this by raising
+    # from the Stockfish path proves it every time, not just when the
+    # search happens to pick a "recognizably hero" move.
+    from app.custom_chess import ai
+
+    def fail_if_called(board, excluded_moves=None):
+        raise AssertionError("Stockfish should never be asked for a vs_ai game whose AI side has a hero piece")
+
+    monkeypatch.setattr(ai, "compute_ai_move", fail_if_called)
+
+    resp = client.post("/api/game/custom-setup", json={"white_back_rank": BUDGET_WHITE_BACK_RANK})
+    game_id = resp.json()["id"]
+    client.post("/api/game/custom-move", json={"game_id": game_id, "from_square": "e2", "to_square": "e4"})
+
+    resp = client.post(f"/api/game/{game_id}/ai-move")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["action_log"][-1].endswith("(AI)")
 
 
 def test_ai_move_endpoint_rejects_when_not_ais_turn(client):

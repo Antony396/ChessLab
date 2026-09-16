@@ -49,6 +49,28 @@ def _standard_back_rank(rank: str) -> dict[str, str]:
     return {f"{file}{rank}": letter for file, letter in zip("abcdefgh", STANDARD_BACK_RANK_LETTERS)}
 
 
+# The vs_ai opponent's own default army, used whenever a game is started
+# without an explicit black_back_rank (every real "vs Computer" game from
+# the deck builder's own UI, which only ever drafts White's side) - a
+# standard back rank with the kingside Knight evolved into an Archer.
+#
+# Without this, the AI's side had no hero piece to ever use, full stop:
+# hero_ai.py's whole search only activates when color_has_hero_pieces(game,
+# BLACK) is true (see custom_ai_move), and _build_game_from_setup used to
+# fall back to a completely plain _standard_back_rank("8") here with no way
+# to register ANY hero square for Black at all (unlike
+# _build_game_from_two_decks, its properly two-sided sibling used by online
+# multiplayer/daily puzzles/the puzzle map, which was always correct on
+# both sides) - so hero_ai was reachable in tests and a real online game,
+# but never once in the actual "vs Computer" button a player clicks. This
+# is what "the custom AI doesn't seem to work" was actually reporting.
+DEFAULT_AI_BLACK_EVOLVED_SQUARES = ["g8"]
+
+
+def _default_ai_black_back_rank() -> dict[str, str]:
+    return _standard_back_rank("8")
+
+
 def _compute_deck_points(back_rank: dict[str, str], evolved_squares: list[str]) -> int:
     evolved = {s.strip().lower() for s in evolved_squares}
     total = 0
@@ -1142,18 +1164,35 @@ def _build_game_from_setup(payload: CustomSetupRequest, enforce_points_budget: b
             raise HTTPException(400, f"Deck costs {points} points - the max is {MAX_DECK_POINTS}")
 
     black_back_rank = payload.black_back_rank
+    # No black_evolved_squares field exists on CustomSetupRequest at all (an
+    # explicitly-provided black_back_rank - the old local-sandbox mode's
+    # second local player - has never had a way to evolve a Knight/Bishop
+    # through this endpoint), so only the default AI deck below ever
+    # produces one - and only for a REAL AI opponent (vs_ai=True). The old
+    # local-sandbox mode (vs_ai=False) can also reach here with no
+    # black_back_rank given; that's never meant a "give it a hero deck"
+    # case, just "nobody's specified black's side yet" - stays a plain
+    # standard back rank exactly like before.
+    black_evolved_squares: list[str] = []
     if black_back_rank is None:
-        black_back_rank = _standard_back_rank("8")
+        if payload.vs_ai:
+            black_back_rank = _default_ai_black_back_rank()
+            black_evolved_squares = DEFAULT_AI_BLACK_EVOLVED_SQUARES
+        else:
+            black_back_rank = _standard_back_rank("8")
 
     # A hero's draft letter (Dragon "D", Hydra "H", Cyclops "C", Mirror "M")
     # isn't a real FEN piece letter - each is stored as the closest real
     # type, same idea as the Knight evolution slot always holding "N" for a
     # piece that's actually an Archer underneath. Translate before build_fen,
-    # then recover the original squares for each afterwards.
+    # then recover the original squares for each afterwards - for BOTH
+    # sides now (black_back_rank was passed through raw before, silently
+    # breaking build_fen for anyone who ever drafted a hero letter there).
     translated_white_back_rank = _translate_hero_letters(payload.white_back_rank)
+    translated_black_back_rank = _translate_hero_letters(black_back_rank)
 
     try:
-        fen = fen_utils.build_fen(translated_white_back_rank, black_back_rank)
+        fen = fen_utils.build_fen(translated_white_back_rank, translated_black_back_rank)
     except fen_utils.InvalidSetupError as exc:
         raise HTTPException(400, str(exc))
 
@@ -1171,43 +1210,29 @@ def _build_game_from_setup(payload: CustomSetupRequest, enforce_points_budget: b
             "That setup produces an illegal position (e.g. a king already in check) - " f"status flags: {remaining_status!r}",
         )
 
-    white_dragon_squares = _collect_hero_squares(payload.white_back_rank, "D")
-    white_hydra_squares = _collect_hero_squares(payload.white_back_rank, "H")
-    white_cyclops_squares = _collect_hero_squares(payload.white_back_rank, "C")
-    white_mirror_squares = _collect_hero_squares(payload.white_back_rank, "M")
-
-    # A Knight's evolution slot swaps in the closest real stored type for a
-    # piece that's actually an Archer (still stored as a Knight - no board
-    # swap needed, unlike the Dragon's own draft-letter translation above).
-    white_archer_square: Optional[chess.Square] = None
-    white_pope_square: Optional[chess.Square] = None
-    for raw_evolved_square in payload.white_evolved_squares:
-        evolved_str = raw_evolved_square.strip().lower()
-        try:
-            evolved_square = chess.parse_square(evolved_str)
-        except ValueError:
-            raise HTTPException(400, f"'{evolved_str}' is not a valid square")
-        evolved_letter = payload.white_back_rank.get(evolved_str, "").strip().upper()
-
-        if evolved_letter == "N":
-            # A Knight's evolution only ever produces one Archer - if more
-            # than one Knight square is given, the last one wins.
-            white_archer_square = evolved_square  # already a Knight in the FEN - no swap needed
-        elif evolved_letter == "B":
-            # A Bishop's evolution only ever produces one Pope - if more
-            # than one Bishop square is given, the last one wins.
-            white_pope_square = evolved_square  # already a Bishop in the FEN - no swap needed
-        else:
-            raise HTTPException(400, f"The evolving square ({evolved_str}) must contain a Knight or Bishop to evolve")
+    white_archer_square, white_pope_square = _resolve_evolution(
+        board, payload.white_back_rank, payload.white_evolved_squares, chess.WHITE
+    )
+    # black_evolved_squares is only ever non-empty for the default AI deck
+    # above (see its own comment on why an explicitly-provided
+    # black_back_rank never has evolved squares to give here) - harmless
+    # no-op ([], None, None) otherwise, the same as it always was.
+    black_archer_square, black_pope_square = _resolve_evolution(board, black_back_rank, black_evolved_squares, chess.BLACK)
 
     return store.create_game(
         board,
-        white_dragon_squares=white_dragon_squares,
+        white_dragon_squares=_collect_hero_squares(payload.white_back_rank, "D"),
+        black_dragon_squares=_collect_hero_squares(black_back_rank, "D"),
         white_pope_square=white_pope_square,
+        black_pope_square=black_pope_square,
         white_archer_square=white_archer_square,
-        white_hydra_squares=white_hydra_squares,
-        white_cyclops_squares=white_cyclops_squares,
-        white_mirror_squares=white_mirror_squares,
+        black_archer_square=black_archer_square,
+        white_hydra_squares=_collect_hero_squares(payload.white_back_rank, "H"),
+        black_hydra_squares=_collect_hero_squares(black_back_rank, "H"),
+        white_cyclops_squares=_collect_hero_squares(payload.white_back_rank, "C"),
+        black_cyclops_squares=_collect_hero_squares(black_back_rank, "C"),
+        white_mirror_squares=_collect_hero_squares(payload.white_back_rank, "M"),
+        black_mirror_squares=_collect_hero_squares(black_back_rank, "M"),
         vs_ai=payload.vs_ai,
     )
 
