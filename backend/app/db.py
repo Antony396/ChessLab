@@ -135,6 +135,18 @@ def init_db() -> None:
             user_id TEXT PRIMARY KEY,
             solved_json TEXT NOT NULL DEFAULT '[]'
         );
+        CREATE TABLE IF NOT EXISTS owned_skins (
+            user_id TEXT NOT NULL,
+            skin_key TEXT NOT NULL,
+            purchased_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, skin_key)
+        );
+        CREATE TABLE IF NOT EXISTS battle_pass_claims (
+            user_id TEXT NOT NULL,
+            level INTEGER NOT NULL,
+            claimed_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, level)
+        );
         """
     )
     # A plain ALTER rather than folding this into the users table's own
@@ -152,6 +164,11 @@ def init_db() -> None:
     # see what King skin someone has on - local-only storage has no way to
     # answer "what does this other player look like" for anyone but you.
     conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_skin TEXT NOT NULL DEFAULT 'classic';")
+    # xp: the level-system total (see award_xp_for_result) - unlike currency,
+    # both sides of a real game earn some (a loss just earns less), since
+    # this is meant to track "how much have you played", not "how much have
+    # you won".
+    conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER NOT NULL DEFAULT 0;")
     conn.commit()
 
 
@@ -466,6 +483,67 @@ def award_currency_for_win(white_user_id: str, black_user_id: str, result: str) 
         add_currency(black_user_id, CURRENCY_PER_WIN)
 
 
+# --- XP / Level -----------------------------------------------------------
+#
+# A separate progression track from both elo (skill/rank) and currency
+# (spendable reward) - tracks "how much have you played", so unlike
+# currency BOTH sides of a real game earn something, a loss just earns
+# less. Same scope as elo/currency: only a real online game between two
+# known accounts moves this (see award_xp_for_result's call site,
+# online_game_routes.py's _apply_game_end_rewards).
+#
+# Level uses a triangular (1+2+3+...) curve rather than a flat per-level
+# cost, so each level takes a little longer than the last - a standard
+# RPG-style curve, and one simple closed-form formula covers both
+# directions (xp -> level, level -> xp-required) without needing a lookup
+# table.
+
+XP_PER_WIN = 20
+XP_PER_LOSS = 5
+XP_PER_DRAW = 10
+_XP_LEVEL_UNIT = 100  # xp_for_level(n) = _XP_LEVEL_UNIT * n * (n-1) / 2
+
+
+def xp_for_level(level: int) -> int:
+    """Cumulative XP required to REACH `level` (level 1 = 0 XP)."""
+    n = level - 1
+    return _XP_LEVEL_UNIT * n * (n + 1) // 2
+
+
+def level_for_xp(xp: int) -> int:
+    """Inverse of xp_for_level - the highest level `xp` actually reaches."""
+    level = 1
+    while xp_for_level(level + 1) <= xp:
+        level += 1
+    return level
+
+
+def get_xp(user_id: str) -> int:
+    row = get_conn().execute("SELECT xp FROM users WHERE id = %s", (user_id,)).fetchone()
+    return row["xp"] if row else 0
+
+
+def add_xp(user_id: str, amount: int) -> int:
+    conn = get_conn()
+    conn.execute("UPDATE users SET xp = xp + %s WHERE id = %s", (amount, user_id))
+    conn.commit()
+    return get_xp(user_id)
+
+
+def award_xp_for_result(white_user_id: str, black_user_id: str, result: str) -> None:
+    """`result` is "white" | "black" | "draw" - the winner earns XP_PER_WIN,
+    the loser still earns XP_PER_LOSS (a draw pays XP_PER_DRAW to both)."""
+    if result == "white":
+        add_xp(white_user_id, XP_PER_WIN)
+        add_xp(black_user_id, XP_PER_LOSS)
+    elif result == "black":
+        add_xp(black_user_id, XP_PER_WIN)
+        add_xp(white_user_id, XP_PER_LOSS)
+    else:
+        add_xp(white_user_id, XP_PER_DRAW)
+        add_xp(black_user_id, XP_PER_DRAW)
+
+
 # --- Equipped skin ---
 #
 # Mirrors the frontend's own skinStore.js local choice (localStorage,
@@ -483,6 +561,119 @@ def set_equipped_skin(user_id: str, skin: str) -> None:
     conn = get_conn()
     conn.execute("UPDATE users SET equipped_skin = %s WHERE id = %s", (skin, user_id))
     conn.commit()
+
+
+# --- Shop (skin purchases) -------------------------------------------------
+#
+# SHOP_CATALOG is the one authoritative price list - the frontend's
+# KING_SKINS registry (skinStore.js) mirrors these same numbers for display,
+# but purchase_skin below always charges from HERE, never from anything the
+# client sends, so a stale bundle or a tampered request can't buy a skin
+# for less than its real price.
+
+SHOP_CATALOG: dict[str, int] = {
+    "dragonKing": 150,
+    "crimsonKnight": 150,
+    "emberKnight": 180,
+    "bronzeKing": 200,
+    "silverAscendant": 250,
+    "goldenAscendant": 300,
+    "emeraldWarden": 220,
+}
+
+SHOP_SKIN_NOT_FOR_SALE = "not_for_sale"
+SHOP_SKIN_INSUFFICIENT_FUNDS = "insufficient_funds"
+SHOP_SKIN_ALREADY_OWNED = "already_owned"
+
+
+class ShopPurchaseError(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
+def get_owned_skins(user_id: str) -> list[str]:
+    rows = get_conn().execute(
+        "SELECT skin_key FROM owned_skins WHERE user_id = %s", (user_id,)
+    ).fetchall()
+    return [r["skin_key"] for r in rows]
+
+
+def owns_skin(user_id: str, skin_key: str) -> bool:
+    row = get_conn().execute(
+        "SELECT 1 FROM owned_skins WHERE user_id = %s AND skin_key = %s", (user_id, skin_key)
+    ).fetchone()
+    return row is not None
+
+
+def purchase_skin(user_id: str, skin_key: str) -> int:
+    """Looks the price up from SHOP_CATALOG itself (see its own comment) and
+    deducts it, atomically enough for this app's traffic (single-row
+    read-then-write on one thread's own connection - see this module's own
+    docstring on the concurrency model). Raises ShopPurchaseError instead of
+    silently no-op'ing so the route layer can tell the failure cases apart.
+    Returns the new currency balance."""
+    if skin_key not in SHOP_CATALOG:
+        raise ShopPurchaseError(SHOP_SKIN_NOT_FOR_SALE)
+    if owns_skin(user_id, skin_key):
+        raise ShopPurchaseError(SHOP_SKIN_ALREADY_OWNED)
+    cost = SHOP_CATALOG[skin_key]
+    if get_currency(user_id) < cost:
+        raise ShopPurchaseError(SHOP_SKIN_INSUFFICIENT_FUNDS)
+    conn = get_conn()
+    conn.execute("UPDATE users SET currency = currency - %s WHERE id = %s", (cost, user_id))
+    conn.execute(
+        "INSERT INTO owned_skins (user_id, skin_key, purchased_at) VALUES (%s, %s, %s) "
+        "ON CONFLICT (user_id, skin_key) DO NOTHING",
+        (user_id, skin_key, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    return get_currency(user_id)
+
+
+# --- Battle pass ------------------------------------------------------------
+#
+# One free reward track keyed off the XP/level system above - no premium
+# tier yet (there's no payment system to sell one through). Every level is
+# claimable exactly once, for a currency reward that scales with the level
+# itself, so there's no fixed reward table to run out of or keep in sync
+# with new content.
+
+BATTLE_PASS_REWARD_PER_LEVEL = 20  # level N's claim pays N * this amount
+
+
+def battle_pass_reward_for_level(level: int) -> int:
+    return level * BATTLE_PASS_REWARD_PER_LEVEL
+
+
+def get_claimed_battle_pass_levels(user_id: str) -> list[int]:
+    rows = get_conn().execute(
+        "SELECT level FROM battle_pass_claims WHERE user_id = %s ORDER BY level", (user_id,)
+    ).fetchall()
+    return [r["level"] for r in rows]
+
+
+class BattlePassClaimError(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
+def claim_battle_pass_level(user_id: str, level: int) -> int:
+    """Raises BattlePassClaimError if `level` is above the account's actual
+    level (not reached yet) or already claimed. Returns the new currency
+    balance."""
+    if level < 1 or level > level_for_xp(get_xp(user_id)):
+        raise BattlePassClaimError("not_reached")
+    if level in get_claimed_battle_pass_levels(user_id):
+        raise BattlePassClaimError("already_claimed")
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO battle_pass_claims (user_id, level, claimed_at) VALUES (%s, %s, %s)",
+        (user_id, level, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    return add_currency(user_id, battle_pass_reward_for_level(level))
 
 
 def get_leaderboard(limit: int = 20) -> list[dict]:

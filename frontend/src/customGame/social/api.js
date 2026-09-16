@@ -55,6 +55,38 @@ export function postEquippedSkin(token, skin) {
   }).then(handle);
 }
 
+export function fetchMe(token) {
+  return fetch(`${API_BASE}/me`, { headers: authHeaders(token) }).then(handle);
+}
+
+// --- Shop --------------------------------------------------------------------
+
+export function fetchShopState(token) {
+  return fetch(`${API_BASE}/shop/state`, { headers: authHeaders(token) }).then(handle);
+}
+
+export function purchaseSkin(token, skin) {
+  return fetch(`${API_BASE}/shop/purchase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ skin }),
+  }).then(handle);
+}
+
+// --- Battle pass ---------------------------------------------------------------
+
+export function fetchBattlePassState(token) {
+  return fetch(`${API_BASE}/battle-pass/state`, { headers: authHeaders(token) }).then(handle);
+}
+
+export function claimBattlePassLevel(token, level) {
+  return fetch(`${API_BASE}/battle-pass/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ level }),
+  }).then(handle);
+}
+
 export function sendFriendRequest(token, toUserId) {
   return fetch(`${API_BASE}/friends/request`, {
     method: "POST",

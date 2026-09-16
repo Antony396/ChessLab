@@ -96,11 +96,19 @@ export const KING_SKINS = {
     headSrc: "/pieces/avatars/hydra-king-head.png",
     requiresMapProgress: 50,
   },
+  // cost: a Shop skin (see ShopPanel.jsx) - locked until purchased with
+  // currency, tracked server-side in owned_skins (unlike every other gate
+  // here, ownership isn't derivable from streak/map progress, so
+  // isSkinUnlocked below also needs `ownedSkins` in `progress` for these).
+  // The actual price charged always comes from the backend's own
+  // SHOP_CATALOG (db.py) - this number is display-only and must be kept in
+  // sync with it by hand.
   dragonKing: {
     name: "Dragon King",
     src: "/pieces/avatars/dragon-king.png",
     whiteTeamSrc: "/pieces/avatars/dragon-king-white.png",
     headSrc: "/pieces/avatars/dragon-king-head.png",
+    cost: 150,
   },
   // A distinct second dark-armored look alongside the existing Dark
   // Knight, not a replacement for it.
@@ -109,6 +117,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/crimson-knight.png",
     whiteTeamSrc: "/pieces/avatars/crimson-knight-white.png",
     headSrc: "/pieces/avatars/crimson-knight-head.png",
+    cost: 150,
   },
   // A third dark-armored look (glowing red eyes) - a distinct skin in its
   // own right, not a variant of Crimson Knight or the original Dark Knight.
@@ -117,6 +126,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/ember-knight.png",
     whiteTeamSrc: "/pieces/avatars/ember-knight-white.png",
     headSrc: "/pieces/avatars/ember-knight-head.png",
+    cost: 180,
   },
   // Dark navy plate under bronze/copper trim - dark enough to need its own
   // whiteTeamSrc recolor, like the others above.
@@ -125,18 +135,21 @@ export const KING_SKINS = {
     src: "/pieces/avatars/bronze-king.png",
     whiteTeamSrc: "/pieces/avatars/bronze-king-white.png",
     headSrc: "/pieces/avatars/bronze-king-head.png",
+    cost: 200,
   },
   silverAscendant: {
     name: "Silver Ascendant",
     src: "/pieces/avatars/silver-ascendant.png",
     whiteTeamSrc: "/pieces/avatars/silver-ascendant-white.png",
     headSrc: "/pieces/avatars/silver-ascendant-head.png",
+    cost: 250,
   },
   goldenAscendant: {
     name: "Golden Ascendant",
     src: "/pieces/avatars/golden-ascendant.png",
     whiteTeamSrc: "/pieces/avatars/golden-ascendant-white.png",
     headSrc: "/pieces/avatars/golden-ascendant-head.png",
+    cost: 300,
   },
   // Dark charcoal armor under a green cape/gem accents, so - like Dark
   // Knight/Hydra - whiteTeamSrc is a separate recolor (charcoal plate ->
@@ -146,6 +159,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/emerald-warden.png",
     whiteTeamSrc: "/pieces/avatars/emerald-warden-white.png",
     headSrc: "/pieces/avatars/emerald-warden-head.png",
+    cost: 220,
   },
 };
 const DEFAULT_SKIN = "classic";
@@ -169,14 +183,18 @@ export function getEquippedSkin() {
 }
 
 // `progress` is optional - callers with no progress info yet (or an
-// anonymous/not-yet-fetched context) can omit either field, which locks
-// every gated skin by default rather than guessing it's unlocked.
+// anonymous/not-yet-fetched context) can omit any field, which locks every
+// gated skin by default rather than guessing it's unlocked. `ownedSkins`
+// gates any skin with a `cost` (see ShopPanel.jsx) - unlike streak/map
+// progress, ownership can only ever be "yes" or "no", fetched from
+// /api/social/shop/state.
 export function isSkinUnlocked(key, progress = {}) {
   const skin = KING_SKINS[key];
   if (!skin) return false;
-  const { streak = 0, mapSolved = 0 } = progress;
+  const { streak = 0, mapSolved = 0, ownedSkins = [] } = progress;
   if (skin.requiresStreak && streak < skin.requiresStreak) return false;
   if (skin.requiresMapProgress && mapSolved < skin.requiresMapProgress) return false;
+  if (skin.cost && !ownedSkins.includes(key)) return false;
   return true;
 }
 

@@ -593,6 +593,7 @@
 }
 
 .hub-profile-badge {
+  position: relative;
   width: 128px;
   height: 128px;
   border-radius: 50%;
@@ -601,6 +602,26 @@
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
   box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.65);
+}
+
+.hub-profile-level-pill {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid #14161c;
+  background: var(--hc-gold);
+  color: #14161c;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* headSrc (see skinStore.js) is already a pre-cropped, pre-centered square
@@ -890,6 +911,221 @@
   font-size: 12px;
   font-weight: 600;
   text-align: center;
+}
+
+/* --- Shop panel (station overlay content) ----------------------------- */
+
+.shop-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.shop-panel-hint {
+  margin: 0;
+  color: var(--hc-text);
+  font-size: 13px;
+}
+
+.shop-currency-badge {
+  flex: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--hc-gold);
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.shop-panel-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-danger);
+  background: rgba(200, 60, 60, 0.12);
+  color: var(--hc-danger);
+  font-size: 12.5px;
+}
+
+.shop-card {
+  cursor: default;
+}
+
+.shop-card-btn {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hc-text-h);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shop-card-btn:hover:not(:disabled) {
+  border-color: var(--hc-gold);
+}
+
+.shop-card-btn.buy {
+  color: var(--hc-gold);
+}
+
+.shop-card-btn.buy.unaffordable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shop-card-btn.owned:disabled {
+  opacity: 0.6;
+  cursor: default;
+  border-color: var(--hc-gold);
+  color: var(--hc-gold);
+}
+
+/* --- Battle pass panel (station overlay content) ----------------------- */
+
+.bp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.bp-level-badge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--hc-gold);
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--hc-gold);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.bp-xp-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bp-xp-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--hc-border-strong);
+  overflow: hidden;
+}
+
+.bp-xp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--hc-gold), #f3d97b);
+  transition: width 0.25s ease;
+}
+
+.bp-xp-label {
+  font-size: 11px;
+  color: var(--hc-text);
+}
+
+.bp-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bp-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 92px;
+  padding: 10px 8px;
+  border-radius: var(--hc-radius-sm);
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.5;
+}
+
+.bp-node.reached {
+  opacity: 1;
+}
+
+.bp-node.claimed {
+  border-color: var(--hc-gold);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.bp-node-level {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--hc-text-h);
+}
+
+.bp-node-reward {
+  font-size: 12px;
+  color: var(--hc-gold);
+}
+
+.bp-node-claim {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-gold);
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--hc-gold);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bp-node-claim:hover:not(:disabled) {
+  background: rgba(212, 175, 55, 0.3);
+}
+
+.bp-node-status {
+  font-size: 11px;
+  color: var(--hc-text);
+}
+
+.bp-node-status.locked {
+  opacity: 0.6;
+}
+
+/* --- Shop / Battle pass hub toggles ------------------------------------ */
+
+.hub-shop-toggle,
+.hub-battlepass-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--hc-text-h);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hub-shop-toggle:hover,
+.hub-battlepass-toggle:hover {
+  border-color: var(--hc-gold);
 }
 
 .puzzle-choice-panel {

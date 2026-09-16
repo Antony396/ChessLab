@@ -13,7 +13,7 @@ import {
 } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
-import { sendFriendRequest } from "../social/api";
+import { sendFriendRequest, fetchMe } from "../social/api";
 import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
 
@@ -167,12 +167,34 @@ function PuzzlePedestalProp() {
 // Exported for CommonsWorld.jsx to reuse - your own profile picture and
 // skin picker shouldn't disappear just because you walked into a shared
 // room that owns no stations of its own.
-export function PlayerProfileBadge({ username }) {
+export function PlayerProfileBadge({ username, token }) {
   const equipped = useEquippedSkin();
+  // Own request (rather than threading level down from a parent that
+  // already has it) since currently no parent actually fetches /me at all
+  // - level has nowhere else to live yet. Not fatal if it fails; the badge
+  // just renders without the pill.
+  const [level, setLevel] = useState(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetchMe(token)
+      .then((me) => {
+        if (!cancelled) setLevel(me.level);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
   return (
     <div className="hub-profile-badge-wrap">
       <div className="hub-profile-badge" title={KING_SKINS[equipped].name}>
         <img src={KING_SKINS[equipped].headSrc} alt="" className="hub-profile-badge-img" />
+        {level != null && (
+          <span className="hub-profile-level-pill" title={`Level ${level}`}>
+            {level}
+          </span>
+        )}
       </div>
       {username && <span className="hub-username-label">{username}</span>}
     </div>
@@ -203,6 +225,24 @@ function FriendsButton({ onClick }) {
     <button type="button" className="hub-friends-toggle" onClick={onClick} title="Friends">
       <FriendsIcon />
       <span>Friends</span>
+    </button>
+  );
+}
+
+function ShopButton({ onClick }) {
+  return (
+    <button type="button" className="hub-shop-toggle" onClick={onClick} title="Shop">
+      <span aria-hidden="true">🛒</span>
+      <span>Shop</span>
+    </button>
+  );
+}
+
+function BattlePassButton({ onClick }) {
+  return (
+    <button type="button" className="hub-battlepass-toggle" onClick={onClick} title="Battle Pass">
+      <span aria-hidden="true">🎖️</span>
+      <span>Pass</span>
     </button>
   );
 }
@@ -256,6 +296,8 @@ export default function HubWorld({
   onOpenPuzzles,
   onOpenSkins,
   onOpenLeaderboard,
+  onOpenShop,
+  onOpenBattlePass,
   onOpenCommons,
   onLogout,
 }) {
@@ -349,8 +391,10 @@ export default function HubWorld({
   return (
     <>
       <div className="hub-side-panel">
-        <PlayerProfileBadge username={username} />
+        <PlayerProfileBadge username={username} token={token} />
         <SkinButton onClick={onOpenSkins} />
+        <ShopButton onClick={onOpenShop} />
+        <BattlePassButton onClick={onOpenBattlePass} />
         <FriendsButton onClick={onOpenFriends} />
         <LogoutButton onClick={onLogout} />
       </div>

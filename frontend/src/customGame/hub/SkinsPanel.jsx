@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { KING_SKINS, useEquippedSkin, setEquippedSkin, isSkinUnlocked } from "../skinStore";
 import { fetchMyStreak } from "../dailyPuzzle/api";
 import { fetchMapState } from "../puzzleMap/api";
+import { fetchShopState } from "../social/api";
 
 // A proper browsing surface for King skins - shown inside the hub's shared
 // station-overlay chrome (see HeroChessApp.jsx), replacing the old cramped
@@ -16,6 +17,7 @@ export default function SkinsPanel({ token }) {
   // Defaults to 0/0 (everything gated stays locked) until each loads.
   const [streak, setStreak] = useState(0);
   const [mapSolved, setMapSolved] = useState(0);
+  const [ownedSkins, setOwnedSkins] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,12 +36,19 @@ export default function SkinsPanel({ token }) {
       .catch(() => {
         // Not fatal - same reasoning as above, for requiresMapProgress.
       });
+    fetchShopState(token)
+      .then((result) => {
+        if (!cancelled) setOwnedSkins(result.owned_skins);
+      })
+      .catch(() => {
+        // Not fatal - same reasoning as above, for cost-gated skins.
+      });
     return () => {
       cancelled = true;
     };
   }, [token]);
 
-  const progress = { streak, mapSolved };
+  const progress = { streak, mapSolved, ownedSkins };
 
   return (
     <div className="skins-panel">
@@ -50,7 +59,9 @@ export default function SkinsPanel({ token }) {
           const unlocked = isSkinUnlocked(key, progress);
           const lockHint = skin.requiresMapProgress
             ? `Solve ${skin.requiresMapProgress} Puzzle Map nodes to unlock ${skin.name} (${mapSolved}/${skin.requiresMapProgress} so far)`
-            : `Solve the Daily Puzzle ${skin.requiresStreak} days in a row to unlock ${skin.name} (${streak}/${skin.requiresStreak} so far)`;
+            : skin.requiresStreak
+              ? `Solve the Daily Puzzle ${skin.requiresStreak} days in a row to unlock ${skin.name} (${streak}/${skin.requiresStreak} so far)`
+              : `Buy ${skin.name} in the Shop for ${skin.cost} currency`;
           return (
             <button
               key={key}
@@ -63,7 +74,12 @@ export default function SkinsPanel({ token }) {
               {isEquipped && <span className="skin-card-badge">Equipped</span>}
               {!unlocked && (
                 <span className="skin-card-lock">
-                  🔒 {skin.requiresMapProgress ? `${mapSolved}/${skin.requiresMapProgress}` : `${streak}/${skin.requiresStreak}`}
+                  🔒{" "}
+                  {skin.requiresMapProgress
+                    ? `${mapSolved}/${skin.requiresMapProgress}`
+                    : skin.requiresStreak
+                      ? `${streak}/${skin.requiresStreak}`
+                      : `${skin.cost}`}
                 </span>
               )}
               <span className="skin-card-preview">

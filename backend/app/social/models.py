@@ -21,6 +21,8 @@ class UserPublic(BaseModel):
     elo: int = 1000
     currency: int = 0
     equipped_skin: str = "classic"
+    xp: int = 0
+    level: int = 1
 
 
 class AuthResponse(BaseModel):
@@ -97,3 +99,28 @@ class SimulSubmitRequest(BaseModel):
 # "token proves who you are" idea as SimulSubmitRequest, no re-auth needed.
 class SimulRespondRequest(BaseModel):
     token: str
+
+
+# --- Shop / Battle pass -----------------------------------------------------
+
+
+class ShopPurchaseRequest(BaseModel):
+    skin: str
+
+
+class ShopStateResponse(BaseModel):
+    currency: int
+    owned_skins: list[str]
+
+
+class BattlePassStateResponse(BaseModel):
+    level: int
+    xp: int
+    xp_into_level: int
+    xp_for_next_level: int
+    claimed_levels: list[int]
+    claimable_levels: list[int]
+
+
+class BattlePassClaimRequest(BaseModel):
+    level: int

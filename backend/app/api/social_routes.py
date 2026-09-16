@@ -30,6 +30,8 @@ from app.social import store
 from app.social.auth import get_current_user_id
 from app.social.models import (
     AuthResponse,
+    BattlePassClaimRequest,
+    BattlePassStateResponse,
     ChallengeRequest,
     ChallengeResponse,
     FriendPublic,
@@ -40,6 +42,8 @@ from app.social.models import (
     RegisterRequest,
     SendFriendRequestPayload,
     SetSkinRequest,
+    ShopPurchaseRequest,
+    ShopStateResponse,
     SimulRespondRequest,
     SimulSubmitRequest,
     UserPublic,
@@ -53,12 +57,15 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
 
 
 def _user_public(row) -> UserPublic:
+    xp = row.get("xp", 0)
     return UserPublic(
         id=row["id"],
         username=row["username"],
         elo=row.get("elo", db.DEFAULT_ELO),
         currency=row.get("currency", 0),
         equipped_skin=row.get("equipped_skin") or db.DEFAULT_EQUIPPED_SKIN,
+        xp=xp,
+        level=db.level_for_xp(xp),
     )
 
 
@@ -144,6 +151,61 @@ def set_my_skin(payload: SetSkinRequest, user_id: str = Depends(get_current_user
     db.set_equipped_skin(user_id, payload.skin)
     row = db.get_user_by_id(user_id)
     return _user_public(row)
+
+
+# --- Shop --------------------------------------------------------------------
+
+
+@router.get("/shop/state", response_model=ShopStateResponse)
+def shop_state(user_id: str = Depends(get_current_user_id)):
+    return ShopStateResponse(currency=db.get_currency(user_id), owned_skins=db.get_owned_skins(user_id))
+
+
+@router.post("/shop/purchase", response_model=ShopStateResponse)
+def shop_purchase(payload: ShopPurchaseRequest, user_id: str = Depends(get_current_user_id)):
+    try:
+        db.purchase_skin(user_id, payload.skin)
+    except db.ShopPurchaseError as exc:
+        detail = {
+            db.SHOP_SKIN_NOT_FOR_SALE: "That skin isn't sold in the shop",
+            db.SHOP_SKIN_ALREADY_OWNED: "You already own that skin",
+            db.SHOP_SKIN_INSUFFICIENT_FUNDS: "Not enough currency for that skin",
+        }.get(exc.reason, "Purchase failed")
+        raise HTTPException(409, detail)
+    return ShopStateResponse(currency=db.get_currency(user_id), owned_skins=db.get_owned_skins(user_id))
+
+
+# --- Battle pass ---------------------------------------------------------------
+
+
+def _battle_pass_state(user_id: str) -> BattlePassStateResponse:
+    xp = db.get_xp(user_id)
+    level = db.level_for_xp(xp)
+    claimed = db.get_claimed_battle_pass_levels(user_id)
+    claimable = [lvl for lvl in range(1, level + 1) if lvl not in claimed]
+    return BattlePassStateResponse(
+        level=level,
+        xp=xp,
+        xp_into_level=xp - db.xp_for_level(level),
+        xp_for_next_level=db.xp_for_level(level + 1) - db.xp_for_level(level),
+        claimed_levels=claimed,
+        claimable_levels=claimable,
+    )
+
+
+@router.get("/battle-pass/state", response_model=BattlePassStateResponse)
+def battle_pass_state(user_id: str = Depends(get_current_user_id)):
+    return _battle_pass_state(user_id)
+
+
+@router.post("/battle-pass/claim", response_model=BattlePassStateResponse)
+def battle_pass_claim(payload: BattlePassClaimRequest, user_id: str = Depends(get_current_user_id)):
+    try:
+        db.claim_battle_pass_level(user_id, payload.level)
+    except db.BattlePassClaimError as exc:
+        detail = "That level hasn't been reached yet" if exc.reason == "not_reached" else "Already claimed"
+        raise HTTPException(409, detail)
+    return _battle_pass_state(user_id)
 
 
 # --- Friends -----------------------------------------------------------------

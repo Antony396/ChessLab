@@ -201,6 +201,7 @@ def _apply_game_end_rewards(game: store.CustomGame, result: str) -> None:
         return
     db.apply_elo_result(game.white_user_id, game.black_user_id, result)
     db.award_currency_for_win(game.white_user_id, game.black_user_id, result)
+    db.award_xp_for_result(game.white_user_id, game.black_user_id, result)
 
 
 @router.post("/online/resign", response_model=CustomGameState)

@@ -8,6 +8,8 @@ import CommonsWorld from "./hub/CommonsWorld";
 import { useHubState } from "./hub/useHubState";
 import FriendsPanel from "./social/FriendsPanel";
 import SkinsPanel from "./hub/SkinsPanel";
+import ShopPanel from "./hub/ShopPanel";
+import BattlePassPanel from "./hub/BattlePassPanel";
 import LeaderboardPanel from "./hub/LeaderboardPanel";
 import PuzzleChoicePanel from "./hub/PuzzleChoicePanel";
 import SimulWaitingRoom from "./social/SimulWaitingRoom";
@@ -327,11 +329,15 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
         ? "Friends"
         : hub.activeOverlay === "skins"
           ? "Choose a Skin"
-          : hub.activeOverlay === "leaderboard"
-            ? "Leaderboard"
-            : hub.activeOverlay === "puzzle-choice"
-              ? "Puzzles"
-              : "Play a Game";
+          : hub.activeOverlay === "shop"
+            ? "Shop"
+            : hub.activeOverlay === "battle-pass"
+              ? "Battle Pass"
+              : hub.activeOverlay === "leaderboard"
+                ? "Leaderboard"
+                : hub.activeOverlay === "puzzle-choice"
+                  ? "Puzzles"
+                  : "Play a Game";
     content = (
       <>
         <HubWorld
@@ -345,6 +351,8 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
           onOpenFriends={() => hub.setActiveOverlay("friends")}
           onOpenPuzzles={() => hub.setActiveOverlay("puzzle-choice")}
           onOpenSkins={() => hub.setActiveOverlay("skins")}
+          onOpenShop={() => hub.setActiveOverlay("shop")}
+          onOpenBattlePass={() => hub.setActiveOverlay("battle-pass")}
           onOpenLeaderboard={() => hub.setActiveOverlay("leaderboard")}
           onOpenCommons={handleVisitCommons}
           onLogout={handleLogout}
@@ -365,6 +373,10 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
                 <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeSent} />
               ) : hub.activeOverlay === "skins" ? (
                 <SkinsPanel token={auth.token} />
+              ) : hub.activeOverlay === "shop" ? (
+                <ShopPanel token={auth.token} />
+              ) : hub.activeOverlay === "battle-pass" ? (
+                <BattlePassPanel token={auth.token} />
               ) : hub.activeOverlay === "leaderboard" ? (
                 <LeaderboardPanel token={auth.token} myUserId={auth.user.id} />
               ) : hub.activeOverlay === "puzzle-choice" ? (

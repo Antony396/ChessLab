@@ -88,7 +88,7 @@ export default function CommonsWorld({ hub, presence, onReturnHome, username, to
           transform (see hubWorld.css), which would turn this fixed
           positioning back into something relative to it instead. */}
       <div className="hub-side-panel">
-        <PlayerProfileBadge username={username} />
+        <PlayerProfileBadge username={username} token={token} />
         <SkinButton onClick={onOpenSkins} />
       </div>
       <div className="hub-room-wrap">
