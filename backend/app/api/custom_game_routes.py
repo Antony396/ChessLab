@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.custom_chess import ai
 from app.custom_chess import fen as fen_utils
+from app.custom_chess import hero_ai
 from app.custom_chess import rules
 from app.custom_chess import store
 from app.custom_chess.models import CustomGameState, CustomMoveRequest, CustomSetupRequest, EvolutionSnapshot
@@ -577,25 +578,20 @@ def _real_legal_standard_moves(game: store.CustomGame, color: chess.Color) -> se
     }
 
 
-def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optional[tuple[chess.Square, chess.Square, bool]]:
-    """Stockfish (see ai.py) only ever proposes a standard chess move - it
-    has no idea a Dragon/Pope/Hydra/Archer/Cyclops/Mirror/boosted-Pawn can
-    move in ways board.legal_moves doesn't recognize at all. Usually that's fine (a
-    hero piece's PLAIN mode is a real python-chess move it can still find),
-    but if the position's ONLY legal move for this color is one of these
-    hero-special ones - most commonly because it's the only way to escape a
-    check delivered by a hero-special move in the first place, which
-    board.is_check() can't see either - custom_ai_move's retry loop can
-    exhaust every standard move Stockfish tries without ever finding it,
-    even though _side_has_a_real_move (checkmate detection's source of
-    truth) already knows one exists.
+def _iter_hero_special_moves(game: store.CustomGame, color: chess.Color):
+    """Every legal move for `color` that board.legal_moves structurally
+    cannot represent - a hero piece's extra movement mode, plus the two
+    pieces (Archer, Mirror) whose entire move set is non-standard. Yields
+    (from_square, to_square, is_shoot) tuples, already filtered for check
+    safety via _move_keeps_king_safe/_shoot_keeps_king_safe.
 
-    This is that fallback: the exact same search _side_has_a_real_move
-    does, except returning the move it finds (as (from, to, is_shoot))
-    instead of just a bool, so custom_ai_move can play it directly.
-    Deliberately a separate function rather than reusing
-    _side_has_a_real_move's own bool-only helpers - keeps that
-    already-tested checkmate-detection code untouched.
+    This used to be _find_hero_special_move, which stopped at the first
+    match (a "does the AI have SOME hero-special escape" fallback for when
+    Stockfish exhausts every standard move - see custom_ai_move). It's a
+    generator now so hero_ai.py's move enumerator can collect every match
+    instead of just the first, without duplicating any of this per-piece
+    candidate logic - _find_hero_special_move below is now a thin wrapper
+    over this for that original caller.
     """
     board = game.board
 
@@ -609,7 +605,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
             if target is not None and target.color == color:
                 continue
             if _move_keeps_king_safe(game, chess.Move(dragon_square, dest), color):
-                return dragon_square, dest, False
+                yield dragon_square, dest, False
 
     pope_square = game.white_pope_square if color == chess.WHITE else game.black_pope_square
     if pope_square is not None:
@@ -620,7 +616,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
                 if target is not None and target.color == color:
                     continue
                 if _move_keeps_king_safe(game, chess.Move(pope_square, dest), color):
-                    return pope_square, dest, False
+                    yield pope_square, dest, False
 
     hydra_squares = game.white_hydra_squares if color == chess.WHITE else game.black_hydra_squares
     for hydra_square in hydra_squares:
@@ -633,7 +629,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
             if target is not None and target.color == color:
                 continue
             if _move_keeps_king_safe(game, chess.Move(hydra_square, dest), color):
-                return hydra_square, dest, False
+                yield hydra_square, dest, False
 
     archer_square = game.white_archer_square if color == chess.WHITE else game.black_archer_square
     if archer_square is not None:
@@ -641,13 +637,13 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
             if board.piece_at(dest) is not None:  # move-only - never a capture, see execute_archer_move
                 continue
             if _move_keeps_king_safe(game, chess.Move(archer_square, dest), color):
-                return archer_square, dest, False
+                yield archer_square, dest, False
         for dest in rules.offset_squares(archer_square, rules.KNIGHT_SHAPE_OFFSETS):
             target = board.piece_at(dest)
             if target is None or target.color == color or target.piece_type == chess.KING:
                 continue
             if _shoot_keeps_king_safe(game, archer_square, dest, color):
-                return archer_square, dest, True
+                yield archer_square, dest, True
 
     cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
     for cyclops_square in cyclops_squares:
@@ -658,7 +654,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
         if target is None or target.color == color or target.piece_type == chess.KING:
             continue
         if _move_keeps_king_safe(game, chess.Move(cyclops_square, dest), color):
-            return cyclops_square, dest, False
+            yield cyclops_square, dest, False
 
     mirror_squares = game.white_mirror_squares if color == chess.WHITE else game.black_mirror_squares
     mimic_type = _mirror_current_mimic_type(game, color)
@@ -672,13 +668,13 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
                     if board.piece_at(dest) is not None:
                         continue
                     if _move_keeps_king_safe(game, chess.Move(mirror_square, dest), color):
-                        return mirror_square, dest, False
+                        yield mirror_square, dest, False
                 for dest in rules.offset_squares(mirror_square, rules.KNIGHT_SHAPE_OFFSETS):
                     target = board.piece_at(dest)
                     if target is None or target.color == color or target.piece_type == chess.KING:
                         continue
                     if _shoot_keeps_king_safe(game, mirror_square, dest, color):
-                        return mirror_square, dest, True
+                        yield mirror_square, dest, True
         else:
             mimic_is_hydra = _mirror_current_mimic_is_hydra(game, color)
             for mirror_square in mirror_squares:
@@ -687,7 +683,7 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
                     if target is not None and target.color == color:
                         continue
                     if _move_keeps_king_safe(game, chess.Move(mirror_square, dest), color):
-                        return mirror_square, dest, False
+                        yield mirror_square, dest, False
 
     if pope_square is not None:
         cyclops_squares = game.white_cyclops_squares if color == chess.WHITE else game.black_cyclops_squares
@@ -701,15 +697,21 @@ def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optio
                 if board.piece_at(one_ahead) is None and _move_keeps_king_safe(
                     game, chess.Move(pawn_square, forward), color
                 ):
-                    return pawn_square, forward, False
+                    yield pawn_square, forward, False
             for dest in rules.pope_boosted_diagonal_capture_squares(pawn_square, color):
                 target = board.piece_at(dest)
                 if target is None or target.color == color or target.piece_type == chess.KING:
                     continue
                 if _move_keeps_king_safe(game, chess.Move(pawn_square, dest), color):
-                    return pawn_square, dest, False
+                    yield pawn_square, dest, False
 
-    return None
+
+def _find_hero_special_move(game: store.CustomGame, color: chess.Color) -> Optional[tuple[chess.Square, chess.Square, bool]]:
+    """The first hero-special escape found for `color`, if any - see
+    custom_ai_move's use of this as a last-resort fallback once Stockfish
+    has exhausted every standard move. See _iter_hero_special_moves for the
+    actual per-piece candidate logic; this just takes its first result."""
+    return next(_iter_hero_special_moves(game, color), None)
 
 
 def _compute_status(game: store.CustomGame) -> str:
@@ -1325,6 +1327,27 @@ def custom_ai_move(game_id: str):
     board = game.board
     if board.turn != chess.BLACK:
         raise HTTPException(400, "It's not the AI's turn")
+
+    if hero_ai.color_has_hero_pieces(game, chess.BLACK):
+        # Stockfish can never use a hero piece's extra movement mode itself
+        # (only ever recognizing a THREAT from one, via the pre-filtering
+        # below, which still handles the human-only-has-a-hero-piece case
+        # just fine) - see hero_ai.py's module docstring. Once the AI's OWN
+        # side actually has a hero piece to use, skip Stockfish entirely
+        # and let the hero-aware search choose the move instead.
+        hero_from, hero_to, hero_shoot = hero_ai.choose_move(game, chess.BLACK)
+        log_entry = _apply_move(
+            game,
+            chess.BLACK,
+            hero_from,
+            hero_to,
+            shoot=hero_shoot,
+            from_square_str=chess.square_name(hero_from),
+            to_square_str=chess.square_name(hero_to),
+        )
+        game.action_log.append(f"{log_entry} (AI)")
+        game.status = _compute_status(game)
+        return _to_state(game)
 
     # Stockfish only ever reasons about the position's FEN, so it has no idea
     # a player's Dragon/Pope/Archer is threatening its king via an extra
