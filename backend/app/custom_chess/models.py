@@ -106,6 +106,12 @@ class CustomGameState(BaseModel):
     # knight-shape-shoot destinations instead of a plain Knight's.
     white_last_moved_was_archer: bool = False
     black_last_moved_was_archer: bool = False
+    # Same idea again, for a Pope instead of a Hydra/Archer - mirrors the
+    # backend's _mirror_current_mimic_is_pope, letting the frontend's Mirror
+    # legal-move-hint logic know to show the Pope's own king-step
+    # destinations instead of a plain Bishop's full diagonal.
+    white_last_moved_was_pope: bool = False
+    black_last_moved_was_pope: bool = False
     # True when whoever's turn it currently is (see `turn` above) is in
     # check right now - the same true-check computation _compute_status
     # uses for checkmate, so this correctly accounts for a hero piece's

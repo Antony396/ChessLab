@@ -344,7 +344,11 @@ def execute_cyclops_move(board: chess.Board, move: chess.Move) -> None:
 
 
 def execute_mirror_move(
-    board: chess.Board, move: chess.Move, mimic_piece_type: chess.PieceType, mimic_is_hydra: bool = False
+    board: chess.Board,
+    move: chess.Move,
+    mimic_piece_type: chess.PieceType,
+    mimic_is_hydra: bool = False,
+    mimic_is_pope: bool = False,
 ) -> None:
     """A Mirror moves exactly like whatever base piece type
     (custom_game_routes.py resolves this down to one of the six standard
@@ -366,13 +370,21 @@ def execute_mirror_move(
     move but never the other two thirds, which is exactly the "couldn't
     copy a Hydra in some cases" bug this fixes - reuses the same
     ring-extra-or-legal check execute_hydra_move itself does.
+
+    mimic_is_pope is the same idea for a Bishop being mimicked: a Pope has
+    no native diagonal-line movement at all (see execute_pope_move), so the
+    relabel-to-Bishop trick would validate the wrong geometry entirely -
+    the whole diagonal instead of one king-step. Routed into the exact same
+    king-step-plus-scratch-board branch King mimicry already uses below,
+    since a Pope's king-step (can capture, blocked only by its own color)
+    is identical to a King's own move in every way that matters here.
     """
     piece = board.piece_at(move.from_square)
     if piece is None or piece.piece_type != chess.BISHOP:
         raise IllegalMoveError("That square doesn't hold a Mirror")
     color = piece.color
 
-    if mimic_piece_type == chess.KING:
+    if mimic_piece_type == chess.KING or (mimic_piece_type == chess.BISHOP and mimic_is_pope):
         if not is_king_step(move.from_square, move.to_square):
             raise IllegalMoveError("That is not a legal Mirror move")
         target = board.piece_at(move.to_square)

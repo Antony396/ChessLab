@@ -67,6 +67,16 @@ class CustomGame:
     # execute_mirror_archer_move/execute_mirror_archer_shoot.
     white_last_moved_was_archer: bool = False
     black_last_moved_was_archer: bool = False
+    # Same idea again, for a Pope instead of a Hydra/Archer: a Pope's
+    # king-step is recorded under last_moved_type == BISHOP (its storage
+    # type), same as a plain Bishop - without this flag a Mirror had no way
+    # to tell them apart, so it mimicked what it thought was a genuine
+    # Bishop's full diagonal-line reach instead of a king-step, a much
+    # broader (and wrong) move/threat pattern than the Pope it was actually
+    # supposed to be copying. See execute_mirror_move's mimic_is_pope
+    # parameter and _mirror_current_mimic_is_pope.
+    white_last_moved_was_pope: bool = False
+    black_last_moved_was_pope: bool = False
     vs_ai: bool = False
     status: str = "in_progress"
     action_log: list[str] = field(default_factory=list)

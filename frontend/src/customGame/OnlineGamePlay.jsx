@@ -73,6 +73,8 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     myColor === "white" ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
   const mirrorMimicIsArcher =
     myColor === "white" ? gameState.black_last_moved_was_archer : gameState.white_last_moved_was_archer;
+  const mirrorMimicIsPope =
+    myColor === "white" ? gameState.black_last_moved_was_pope : gameState.white_last_moved_was_pope;
 
   // Both players read every state update off the same broadcast, rather
   // than the mover trusting its own POST response and the opponent trusting
@@ -175,6 +177,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
     const opponentLastType = isWhite ? gameState.black_last_moved_type : gameState.white_last_moved_type;
     const mimicIsHydra = isWhite ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
     const mimicIsArcher = isWhite ? gameState.black_last_moved_was_archer : gameState.white_last_moved_was_archer;
+    const mimicIsPope = isWhite ? gameState.black_last_moved_was_pope : gameState.white_last_moved_was_pope;
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
@@ -188,6 +191,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
         mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
         mirrorMimicIsHydra: mimicIsHydra,
         mirrorMimicIsArcher: mimicIsArcher,
+        mirrorMimicIsPope: mimicIsPope,
         ownPopeSquare: popeSquare,
       })
     );
@@ -266,6 +270,7 @@ export default function OnlineGamePlay({ initialGame, myColor, myToken, onExit }
       mirrorMimicType,
       mirrorMimicIsHydra,
       mirrorMimicIsArcher,
+      mirrorMimicIsPope,
       ownPopeSquare: myPopeSquare,
       shoot,
     });

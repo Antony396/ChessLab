@@ -169,6 +169,7 @@ export function tryOptimisticFen(
     mirrorMimicType,
     mirrorMimicIsHydra,
     mirrorMimicIsArcher,
+    mirrorMimicIsPope,
     ownPopeSquare,
     shoot,
   } = {}
@@ -223,7 +224,7 @@ export function tryOptimisticFen(
   } else if (
     isMirrorSquare &&
     mirrorMimicType &&
-    mirrorMimicDestinations(chess, from, mirrorMimicType, mirrorMimicIsHydra).includes(to)
+    mirrorMimicDestinations(chess, from, mirrorMimicType, mirrorMimicIsHydra, mirrorMimicIsPope).includes(to)
   ) {
     return applyRelocateAndCapture(fen, from, to);
   }
@@ -382,9 +383,15 @@ function applyBoostedPawnPush(fen, from, to, promotion) {
 // layers on a Hydra's ring-extra squares when mimicking a Knight - chess.js's
 // relabel-to-Knight trick alone only ever sees the plain knight-shaped third
 // of a Hydra's ring, the same gap _mirror_candidate_destinations closes on
-// the backend (the "couldn't copy a Hydra in some cases" bug).
-function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra) {
-  if (mimicType === "k") return kingStepDestinations(chess, fromSquare);
+// the backend (the "couldn't copy a Hydra in some cases" bug). mimicIsPope
+// routes a mimicked Bishop into king-step geometry instead of the
+// relabel-and-ask path below - a Pope has no native diagonal-line movement
+// at all (see rules.py's execute_pope_move), so treating it as a real
+// Bishop offered (and threatened - see custom_game_routes.py's
+// _mirror_threat_squares) the whole diagonal instead of the one square a
+// king-step actually reaches.
+function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra, mimicIsPope) {
+  if (mimicType === "k" || (mimicType === "b" && mimicIsPope)) return kingStepDestinations(chess, fromSquare);
 
   const mover = chess.get(fromSquare);
   const scratch = new Chess(chess.fen());
@@ -423,6 +430,7 @@ export function computeLegalDestinations({
   mirrorMimicType, // one of "q"/"r"/"b"/"n"/"p"/"k", or null/undefined if nothing to mimic yet
   mirrorMimicIsHydra,
   mirrorMimicIsArcher,
+  mirrorMimicIsPope,
   ownPopeSquare, // this piece's own side's Pope square, for the aura's boosted-Pawn destinations
 }) {
   let chess;
@@ -490,7 +498,7 @@ export function computeLegalDestinations({
         ...shootDestinations.map((to) => ({ square: to, capture: true, shoot: true })),
       ];
     }
-    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra);
+    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra, mirrorMimicIsPope);
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
 

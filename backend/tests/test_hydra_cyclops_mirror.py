@@ -432,6 +432,90 @@ def test_mirror_mimics_pawn_promotion_to_back_rank():
     assert piece.color == chess.WHITE
 
 
+def test_mirror_mimics_pope_king_step():
+    board = _board({**_kings(), chess.D4: chess.Piece(chess.BISHOP, chess.WHITE)})
+    rules.execute_mirror_move(board, chess.Move.from_uci("d4e5"), chess.BISHOP, mimic_is_pope=True)
+    assert board.piece_at(chess.E5).piece_type == chess.BISHOP
+    assert board.piece_at(chess.D4) is None
+
+
+def test_mirror_rejects_bishop_diagonal_when_mimicking_pope():
+    # A Pope has no diagonal-line movement at all (see execute_pope_move) -
+    # mimic_is_pope must RESTRICT the Mirror to king-step, not just add it
+    # on top of a real Bishop's full diagonal reach.
+    board = _board({**_kings(), chess.A1: chess.Piece(chess.BISHOP, chess.WHITE)})
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_move(board, chess.Move.from_uci("a1h8"), chess.BISHOP, mimic_is_pope=True)
+
+
+def test_mirror_pope_mimic_can_capture():
+    # Unlike an Archer's relocate (move-only), a Pope's king-step genuinely
+    # can capture - only a same-color target blocks it.
+    board = _board({**_kings(), chess.D4: chess.Piece(chess.BISHOP, chess.WHITE), chess.E5: chess.Piece(chess.PAWN, chess.BLACK)})
+    rules.execute_mirror_move(board, chess.Move.from_uci("d4e5"), chess.BISHOP, mimic_is_pope=True)
+    assert board.piece_at(chess.E5).piece_type == chess.BISHOP
+    assert board.piece_at(chess.E5).color == chess.WHITE
+
+
+def test_mirror_pope_mimic_respects_check_safety():
+    board = _board(
+        {
+            chess.E1: chess.Piece(chess.KING, chess.WHITE),
+            chess.E8: chess.Piece(chess.KING, chess.BLACK),
+            chess.E2: chess.Piece(chess.BISHOP, chess.WHITE),
+            chess.E7: chess.Piece(chess.ROOK, chess.BLACK),
+        }
+    )
+    with pytest.raises(rules.IllegalMoveError):
+        rules.execute_mirror_move(board, chess.Move.from_uci("e2d3"), chess.BISHOP, mimic_is_pope=True)
+
+
+def test_mirror_mimics_pope_king_step_end_to_end():
+    board = chess.Board(None)
+    board.set_piece_at(chess.E1, chess.Piece(chess.KING, chess.WHITE))
+    board.set_piece_at(chess.C1, chess.Piece(chess.BISHOP, chess.WHITE))  # Mirror
+    board.set_piece_at(chess.E2, chess.Piece(chess.PAWN, chess.WHITE))
+    board.set_piece_at(chess.E8, chess.Piece(chess.KING, chess.BLACK))
+    board.set_piece_at(chess.B8, chess.Piece(chess.BISHOP, chess.BLACK))  # Pope
+    board.turn = chess.WHITE
+    game = store.create_game(board, white_mirror_squares={chess.C1}, black_pope_square=chess.B8)
+
+    routes._apply_move(game, chess.WHITE, chess.E2, chess.E4, False, "e2", "e4")  # White moves first
+    routes._apply_move(game, chess.BLACK, chess.B8, chess.B7, False, "b8", "b7")  # Pope king-step
+    assert game.black_pope_square == chess.B7
+    assert game.black_last_moved_type == chess.BISHOP
+    assert game.black_last_moved_was_pope is True
+
+    # c1-d2 is a king-step - illegal for a real Bishop's diagonal (d2 isn't
+    # even on c1's diagonal), only reachable because the Mirror knows the
+    # move it's copying was specifically a Pope's king-step.
+    routes._apply_move(game, chess.WHITE, chess.C1, chess.D2, False, "c1", "d2")
+    assert game.white_mirror_squares == {chess.D2}
+    assert game.board.piece_at(chess.D2).piece_type == chess.BISHOP
+    assert game.white_last_moved_type == chess.BISHOP
+    assert game.white_last_moved_was_pope is True
+
+
+def test_mirror_mimicking_pope_does_not_phantom_threaten_the_whole_diagonal():
+    # Reported live: a Mirror mimicking a Pope's king-step was instead
+    # treated as a real Bishop, threatening its ENTIRE diagonal instead of
+    # the one square a king-step actually reaches - which could make an
+    # enemy king unable to find any legal move at all along that phantom
+    # diagonal. White's Pope on d4 steps to d5 (a king-step); Black's
+    # Mirror on h8 should then only threaten g7/g8/h7, not the rest of the
+    # a1-h8 diagonal (a1/b2/c3/e5/f6/g7 - none of those are within a
+    # king-step of h8).
+    board = chess.Board("7k/8/8/8/3B4/8/8/1K6 w - - 0 1")
+    game = store.create_game(board, white_pope_square=chess.D4, black_mirror_squares={chess.H8})
+
+    routes._apply_move(game, chess.WHITE, chess.D4, chess.D5, False, "d4", "d5")
+    threats = routes._extra_threat_squares(game, chess.BLACK)
+    assert threats == {chess.G7, chess.G8, chess.H7}
+    # Before the fix, this was {a1, b2, c3, d4, e5, f6, g7} - the Mirror's
+    # entire diagonal, which could make a king anywhere along it wrongly
+    # unable to move at all.
+
+
 def test_cyclops_plain_diagonal_gives_check_like_a_real_pawn():
     """A Cyclops sitting one square diagonally from the enemy king gives
     check exactly like a real Pawn would - this is just python-chess's own

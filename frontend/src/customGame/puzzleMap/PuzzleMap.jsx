@@ -87,6 +87,7 @@ export default function PuzzleMap({ token, onExit }) {
   const mirrorMimicType = opponentLastType ? opponentLastType.toLowerCase() : null;
   const mirrorMimicIsHydra = myPrefix === "w" ? game?.black_last_moved_was_hydra : game?.white_last_moved_was_hydra;
   const mirrorMimicIsArcher = myPrefix === "w" ? game?.black_last_moved_was_archer : game?.white_last_moved_was_archer;
+  const mirrorMimicIsPope = myPrefix === "w" ? game?.black_last_moved_was_pope : game?.white_last_moved_was_pope;
 
   const pieces = useMemo(() => {
     if (!game) return undefined;
@@ -120,6 +121,7 @@ export default function PuzzleMap({ token, onExit }) {
         mirrorMimicType,
         mirrorMimicIsHydra,
         mirrorMimicIsArcher,
+        mirrorMimicIsPope,
         ownPopeSquare: popeSquare,
       })
     );

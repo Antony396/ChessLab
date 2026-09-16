@@ -63,6 +63,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
   const mirrorMimicType = gameState.black_last_moved_type ? gameState.black_last_moved_type.toLowerCase() : null;
   const mirrorMimicIsHydra = gameState.black_last_moved_was_hydra;
   const mirrorMimicIsArcher = gameState.black_last_moved_was_archer;
+  const mirrorMimicIsPope = gameState.black_last_moved_was_pope;
 
   // Works for either color, not just White's - a click-to-preview should
   // show what the computer's own pieces could do too. handlePieceDrop/
@@ -79,6 +80,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
     const opponentLastType = isWhite ? gameState.black_last_moved_type : gameState.white_last_moved_type;
     const mimicIsHydra = isWhite ? gameState.black_last_moved_was_hydra : gameState.white_last_moved_was_hydra;
     const mimicIsArcher = isWhite ? gameState.black_last_moved_was_archer : gameState.white_last_moved_was_archer;
+    const mimicIsPope = isWhite ? gameState.black_last_moved_was_pope : gameState.white_last_moved_was_pope;
     setLegalDestinations(
       computeLegalDestinations({
         fen: gameState.fen,
@@ -92,6 +94,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
         mirrorMimicType: opponentLastType ? opponentLastType.toLowerCase() : null,
         mirrorMimicIsHydra: mimicIsHydra,
         mirrorMimicIsArcher: mimicIsArcher,
+        mirrorMimicIsPope: mimicIsPope,
         ownPopeSquare: popeSquare,
       })
     );
@@ -161,6 +164,7 @@ export default function CustomGamePlay({ initialGame, onExit }) {
       mirrorMimicType,
       mirrorMimicIsHydra,
       mirrorMimicIsArcher,
+      mirrorMimicIsPope,
       ownPopeSquare: whitePopeSquare,
       shoot,
     });
