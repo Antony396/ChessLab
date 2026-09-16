@@ -803,44 +803,57 @@ export default function DeckBuilder({
         </div>
       )}
       {token && (
-        <div className="saved-deck-slots">
-          {[1, 2].map((slot) => {
-            const saved = savedDecks[slot];
-            const busy = deckSlotBusy === slot;
-            return (
-              <div key={slot} className="saved-deck-slot">
-                <button
-                  type="button"
-                  className="saved-deck-slot-load"
-                  disabled={!saved || busy}
-                  onClick={() => handleLoadFromSlot(slot)}
-                  title={saved ? `Load "${saved.name}"` : `Slot ${slot} is empty`}
-                >
-                  {saved ? saved.name : `Slot ${slot}: empty`}
-                </button>
-                <button
-                  type="button"
-                  className="saved-deck-slot-save"
-                  disabled={busy}
-                  onClick={() => handleSaveToSlot(slot)}
-                  title={`Save the current deck to slot ${slot}`}
-                >
-                  Save
-                </button>
-                {saved && (
+        <div className="saved-deck-section">
+          <span className="saved-deck-section-label">Saved Decks</span>
+          <div className="saved-deck-slots">
+            {[1, 2].map((slot) => {
+              const saved = savedDecks[slot];
+              const busy = deckSlotBusy === slot;
+              return (
+                <div key={slot} className="saved-deck-slot">
+                  {/* Always visible regardless of save state - previously
+                      the slot number only ever appeared in the empty-state
+                      text ("Slot 1: empty"), which disappeared the moment a
+                      deck was actually saved there (replaced by just the
+                      deck's own name), making it hard to tell which of the
+                      two slots you were looking at, or which one Save was
+                      about to overwrite. */}
+                  <span className="saved-deck-slot-badge" title={`Slot ${slot}`}>
+                    {slot}
+                  </span>
                   <button
                     type="button"
-                    className="saved-deck-slot-delete"
-                    disabled={busy}
-                    onClick={() => handleDeleteSlot(slot)}
-                    title={`Delete slot ${slot}`}
+                    className="saved-deck-slot-load"
+                    disabled={!saved || busy}
+                    onClick={() => handleLoadFromSlot(slot)}
+                    title={saved ? `Load "${saved.name}" (slot ${slot})` : `Slot ${slot} is empty`}
                   >
-                    ×
+                    {saved ? saved.name : "Empty"}
                   </button>
-                )}
-              </div>
-            );
-          })}
+                  <button
+                    type="button"
+                    className="saved-deck-slot-save"
+                    disabled={busy}
+                    onClick={() => handleSaveToSlot(slot)}
+                    title={saved ? `Overwrite slot ${slot} ("${saved.name}") with the current deck` : `Save the current deck to slot ${slot}`}
+                  >
+                    {saved ? "Overwrite" : "Save here"}
+                  </button>
+                  {saved && (
+                    <button
+                      type="button"
+                      className="saved-deck-slot-delete"
+                      disabled={busy}
+                      onClick={() => handleDeleteSlot(slot)}
+                      title={`Delete slot ${slot}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       <div className={`points-bar${overBudget ? " over" : ""}${atFullBudget ? " full" : ""}`}>
