@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { FLAT_2D_BOARD_COLORS, buildPiecesWithEvolutions } from "../../pieces/flat2dPieces";
 import { computeLegalDestinations, isArcherShootMove } from "../legalMoves";
 import { playCaptureSound, playMoveSound } from "../sound";
 import { KING_SKINS } from "../skinStore";
 import { fetchMapState, startMapPuzzle, postMapPuzzleMove } from "./api";
+import { MAP_NODE_POSITIONS } from "./mapNodePositions";
 import "./puzzleMap.css";
 
 const DOT_STYLE = { backgroundImage: "radial-gradient(circle, rgba(20,20,20,0.35) 19%, transparent 20%)" };
@@ -14,13 +15,15 @@ const CORRECT_FLASH_MS = 260;
 const WRONG_FLASH_MS = 320;
 
 // Replaces the old timed Puzzle Rush mode: a fixed route of 50 puzzles,
-// shown as a Candy-Crush-style path of numbered nodes connected by a
-// dotted line. Only a handful are visible at once (the "zoom" the room
-// asked for) via a horizontally-scrolling, snap-scrolled strip rather than
-// showing all 50 at real size - see puzzleMap.css's --map-node-slot for the
-// exact node spacing that makes ~5 fit in the viewport at a time. Node 50
-// is a hand-authored Hydra mate (see backend's puzzle_map/store.py) and
-// unlocks the Hydra King skin the moment it's solved.
+// shown as numbered nodes overlaid directly on a hand-painted fantasy map
+// (public/puzzle-map/map-background.png) along its own painted dotted
+// path - see mapNodePositions.js for how each node's {x,y} was derived
+// from the artwork itself. The whole map is shown at once (scaled to fit
+// via aspect-ratio, not paginated/scrolled), so a node's position on
+// screen always matches its position in the artwork regardless of viewport
+// width. Node 50 is a hand-authored Hydra mate (see backend's
+// puzzle_map/store.py) and unlocks the Hydra King skin the moment it's
+// solved.
 export default function PuzzleMap({ token, onExit }) {
   const [phase, setPhase] = useState("loading-map"); // "loading-map" | "route" | "loading-puzzle" | "solving" | "solved" | "error"
   const [mapState, setMapState] = useState(null); // GET /puzzle-map/state response
@@ -31,7 +34,6 @@ export default function PuzzleMap({ token, onExit }) {
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [busy, setBusy] = useState(false);
   const [justUnlockedHydra, setJustUnlockedHydra] = useState(false);
-  const trackRef = useRef(null);
 
   function loadMapState() {
     setPhase("loading-map");
@@ -47,17 +49,6 @@ export default function PuzzleMap({ token, onExit }) {
   }
 
   useEffect(loadMapState, [token]);
-
-  // Once the route is showing, scroll the strip so the furthest-unlocked
-  // node (the one the player actually cares about right now) is centered
-  // in the ~5-visible window rather than always starting at node 1.
-  useEffect(() => {
-    if (phase !== "route" || !mapState || !trackRef.current) return;
-    // Node 1 is always unlocked, so this is never -1 in practice.
-    const targetIndex = mapState.nodes.findLastIndex((n) => n.unlocked);
-    const node = trackRef.current.querySelector(`[data-node-index="${targetIndex + 1}"]`);
-    node?.scrollIntoView({ behavior: "auto", inline: "center", block: "nearest" });
-  }, [phase, mapState]);
 
   function openNode(index) {
     setPhase("loading-puzzle");
@@ -274,32 +265,34 @@ export default function PuzzleMap({ token, onExit }) {
           Back to Dorm
         </button>
       </div>
-      <div className="puzzle-map-viewport" ref={trackRef}>
-        <div className="puzzle-map-track">
-          {mapState.nodes.map((node, i) => (
-            <div className="puzzle-map-node-wrap" key={node.index} data-node-index={node.index}>
-              {i > 0 && <div className={`puzzle-map-connector${mapState.nodes[i - 1].solved ? " filled" : ""}`} />}
-              <button
-                type="button"
-                className={`puzzle-map-node${node.solved ? " solved" : ""}${node.unlocked ? "" : " locked"}${
-                  node.is_finale ? " finale" : ""
-                }`}
-                disabled={!node.unlocked}
-                onClick={() => openNode(node.index)}
-                title={node.is_finale ? "Node 50 - unlocks the Hydra King skin" : `Puzzle ${node.index}`}
-              >
-                {node.is_finale ? (
-                  <img src={KING_SKINS.hydra.src} alt="" className="puzzle-map-finale-img" />
-                ) : (
-                  <span className="puzzle-map-node-number">{node.index}</span>
-                )}
-                {node.solved && <span className="puzzle-map-node-check">✓</span>}
-                {!node.unlocked && <span className="puzzle-map-node-lock">🔒</span>}
-                {node.is_finale && <span className="puzzle-map-node-star">★</span>}
-              </button>
-            </div>
-          ))}
-        </div>
+      <div className="puzzle-map-atlas">
+        <img src="/puzzle-map/map-background.png" alt="" className="puzzle-map-atlas-img" draggable={false} />
+        {mapState.nodes.map((node, i) => {
+          const pos = MAP_NODE_POSITIONS[i];
+          if (!pos) return null;
+          return (
+            <button
+              key={node.index}
+              type="button"
+              className={`puzzle-map-node${node.solved ? " solved" : ""}${node.unlocked ? "" : " locked"}${
+                node.is_finale ? " finale" : ""
+              }`}
+              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+              disabled={!node.unlocked}
+              onClick={() => openNode(node.index)}
+              title={node.is_finale ? "Node 50 - unlocks the Hydra King skin" : `Puzzle ${node.index}`}
+            >
+              {node.is_finale ? (
+                <img src={KING_SKINS.hydra.src} alt="" className="puzzle-map-finale-img" />
+              ) : (
+                <span className="puzzle-map-node-number">{node.index}</span>
+              )}
+              {node.solved && <span className="puzzle-map-node-check">✓</span>}
+              {!node.unlocked && <span className="puzzle-map-node-lock">🔒</span>}
+              {node.is_finale && <span className="puzzle-map-node-star">★</span>}
+            </button>
+          );
+        })}
       </div>
       {error && <div className="error-banner">{error}</div>}
     </div>

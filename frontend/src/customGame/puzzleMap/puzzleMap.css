@@ -111,87 +111,83 @@
   font-weight: 700;
 }
 
-/* --- The route: a horizontally-scrolling, snap-scrolled strip of nodes so
-   only a handful are ever visible at real size (the "zoom") rather than
-   showing all 50 nodes shrunk down at once. --map-node-slot is the total
-   width each node "owns" (circle + connector); five of them roughly fill
-   the same 480px width the puzzle board itself uses, so the two views feel
-   like the same object. */
-.puzzle-map-viewport {
-  --map-node-slot: 96px;
+/* --- The route: all 50 nodes overlaid directly on the painted map
+   (public/puzzle-map/map-background.png) at the {x,y}% positions in
+   mapNodePositions.js, which were derived FROM that same image, so every
+   node sits right on its own painted spot on the path regardless of how
+   large the map is actually rendered. container-type here is what makes
+   that true: node size is set in cqw (a % of the atlas's own current
+   width, not the viewport's), so nodes scale down in lockstep with the map
+   itself on a narrow phone instead of overflowing or going tiny. */
+.puzzle-map-atlas {
+  position: relative;
   width: 100%;
-  max-width: 480px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  padding: 24px 0;
+  max-width: 1000px;
+  aspect-ratio: 1619 / 971;
+  border-radius: var(--hc-radius);
+  overflow: hidden;
+  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.6);
+  container-type: inline-size;
 }
 
-.puzzle-map-track {
-  display: flex;
-  align-items: center;
-  width: max-content;
-  padding: 0 calc(var(--map-node-slot) / 2);
-}
-
-.puzzle-map-node-wrap {
-  display: flex;
-  align-items: center;
-  scroll-snap-align: center;
-}
-
-.puzzle-map-connector {
-  width: calc(var(--map-node-slot) - 56px);
-  height: 0;
-  border-top: 3px dotted var(--hc-border-strong);
-  flex-shrink: 0;
-}
-
-.puzzle-map-connector.filled {
-  border-top-color: var(--hc-gold);
+.puzzle-map-atlas-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
 }
 
 .puzzle-map-node {
-  position: relative;
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 6.4cqw;
+  height: 6.4cqw;
+  min-width: 20px;
+  min-height: 20px;
   border-radius: 50%;
-  border: 3px solid var(--hc-border-strong);
-  background: var(--hc-surface);
+  border: 0.4cqw solid var(--hc-border-strong);
+  background: rgba(20, 22, 28, 0.75);
+  backdrop-filter: blur(2px);
   color: var(--hc-text-h);
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 2.6cqw;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.1s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
 .puzzle-map-node:not(:disabled):hover {
-  transform: scale(1.08);
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
 .puzzle-map-node.solved {
   border-color: var(--hc-gold);
-  background: rgba(230, 190, 90, 0.15);
+  background: rgba(230, 190, 90, 0.35);
 }
 
 .puzzle-map-node.locked {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .puzzle-map-node.finale {
-  width: 72px;
-  height: 72px;
+  width: 9cqw;
+  height: 9cqw;
+  min-width: 30px;
+  min-height: 30px;
   border-color: var(--hc-gold);
-  box-shadow: 0 0 14px rgba(230, 190, 90, 0.5);
+  box-shadow: 0 0 14px rgba(230, 190, 90, 0.6);
 }
 
 .puzzle-map-node-number {
   pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .puzzle-map-finale-img {
@@ -204,16 +200,19 @@
 
 .puzzle-map-node-check {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
+  bottom: -15%;
+  right: -15%;
   background: var(--hc-gold);
   color: #1a1a1a;
   border-radius: 50%;
-  width: 18px;
-  height: 18px;
-  font-size: 12px;
-  line-height: 18px;
-  text-align: center;
+  width: 45%;
+  height: 45%;
+  min-width: 14px;
+  min-height: 14px;
+  font-size: 65%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .puzzle-map-node-lock {
@@ -222,16 +221,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  background: rgba(0, 0, 0, 0.35);
+  font-size: 80%;
+  background: rgba(0, 0, 0, 0.4);
   border-radius: 50%;
 }
 
 .puzzle-map-node-star {
   position: absolute;
-  top: -10px;
-  right: -6px;
-  font-size: 16px;
+  top: -18%;
+  right: -12%;
+  font-size: 70%;
   color: var(--hc-gold);
   filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
 }
