@@ -415,6 +415,37 @@ function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra, mim
   return destinations;
 }
 
+// Whether relocating the piece on `fromSquare` to `toSquare` would leave
+// moverColor's own king in check - used to filter every hero-special
+// destination list below (king-step, knight-shape, ring-extra, ...) none
+// of which go through chess.js's own native legal-move generation the way
+// a plain/base-mode move does, so none of them were ever check-safety
+// filtered on their own. Confirmed live: an Archer pinned to its own king
+// along a file showed dots for all 8 king-step squares, 6 of which the
+// server correctly rejected as "leaves your king in check" - the exact
+// "sometimes doesn't work" symptom (a shown dot that silently fails on
+// drop). `chess` is assumed to already have its turn set to moverColor
+// (computeLegalDestinations's own off-turn flip above already does this),
+// so the scratch clone's own inCheck() directly answers the right
+// question without needing a color argument.
+function keepsOwnKingSafeIfRelocated(chess, fromSquare, toSquare, moverColor) {
+  const scratch = new Chess(chess.fen());
+  const piece = scratch.get(fromSquare);
+  if (!piece) return false;
+  scratch.remove(fromSquare);
+  scratch.remove(toSquare);
+  scratch.put({ type: piece.type, color: moverColor }, toSquare);
+  return !scratch.inCheck();
+}
+
+// Same idea, for an Archer's (or a Mirror-mimicking-one's) shoot - the
+// shooter never relocates, only the target square loses its piece.
+function keepsOwnKingSafeIfShotFrom(chess, targetSquare) {
+  const scratch = new Chess(chess.fen());
+  scratch.remove(targetSquare);
+  return !scratch.inCheck();
+}
+
 // Returns [{ square, capture, shoot }] - capture flags whether that
 // destination is currently occupied (by an enemy piece), for dot-vs-ring
 // styling; shoot flags an Archer's non-relocating knight's-move capture.
@@ -477,8 +508,14 @@ export function computeLegalDestinations({
     // its move-only king-step destinations (plain dots) and its knight's-
     // move shoot targets (red rings) at once; which one a drop actually
     // performs is inferred from the target square, not a pre-armed mode.
-    const moveDestinations = archerRelocateDestinations(chess, square);
-    const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true });
+    // Both filtered for check safety (see keepsOwnKingSafeIfRelocated's own
+    // comment) - an Archer pinned to its own king must not show either.
+    const moveDestinations = archerRelocateDestinations(chess, square).filter((to) =>
+      keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+    );
+    const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true }).filter((to) =>
+      keepsOwnKingSafeIfShotFrom(chess, to)
+    );
     return [
       ...moveDestinations.map((to) => ({ square: to, capture: false, shoot: false })),
       ...shootDestinations.map((to) => ({ square: to, capture: true, shoot: true })),
@@ -491,14 +528,27 @@ export function computeLegalDestinations({
       // Same dual-mode shape as the real Archer branch above - a Mirror
       // currently mimicking an Archer shows both the move-only relocate
       // dots and the knight's-move shoot rings at once.
-      const moveDestinations = archerRelocateDestinations(chess, square);
-      const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true });
+      const moveDestinations = archerRelocateDestinations(chess, square).filter((to) =>
+        keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+      );
+      const shootDestinations = knightShapeDestinations(chess, square, { requireEnemy: true }).filter((to) =>
+        keepsOwnKingSafeIfShotFrom(chess, to)
+      );
       return [
         ...moveDestinations.map((to) => ({ square: to, capture: false, shoot: false })),
         ...shootDestinations.map((to) => ({ square: to, capture: true, shoot: true })),
       ];
     }
-    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra, mirrorMimicIsPope);
+    // mirrorMimicDestinations's own relabel-and-ask-chess.js path (every
+    // mimicked type except King/Pope) is already check-safety filtered
+    // natively by chess.js's own legal-move generation on that scratch
+    // board - only King/Pope mimicry (pure king-step offsets, same gap as
+    // the real Pope below) and a mimicked Hydra's ring-extra addition
+    // aren't, so this filters the whole result uniformly rather than
+    // duplicating mirrorMimicDestinations's own branching here.
+    const destinations = mirrorMimicDestinations(chess, square, mirrorMimicType, mirrorMimicIsHydra, mirrorMimicIsPope).filter(
+      (to) => keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+    );
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
 
@@ -507,27 +557,47 @@ export function computeLegalDestinations({
     // replaces, a Pope has NO native movement mode at all (its Bishop
     // storage's diagonal-line moves are never actually legal for it), so
     // king-step is the sole source of truth, structurally like the Archer's
-    // own king-step relocate above.
-    const destinations = kingStepDestinations(chess, square);
+    // own king-step relocate above - filtered the same way for the same
+    // reason (a pinned Pope must not show a dot off the pin line).
+    const destinations = kingStepDestinations(chess, square).filter((to) =>
+      keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+    );
     return destinations.map((to) => ({ square: to, capture: Boolean(chess.get(to)), shoot: false }));
   }
 
   const baseModeDestinations = chess.moves({ square, verbose: true }).map((m) => m.to);
   let destinations;
   if (isDragonSquare) {
-    destinations = [...new Set([...baseModeDestinations, ...knightShapeDestinations(chess, square, { requireEnemy: false })])];
+    // baseModeDestinations (the Rook-line moves) already comes from
+    // chess.js's own native legal-move generation, which is already
+    // check-safety filtered - only the added knight-shape hop needs it
+    // done manually here.
+    const knightHopDestinations = knightShapeDestinations(chess, square, { requireEnemy: false }).filter((to) =>
+      keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+    );
+    destinations = [...new Set([...baseModeDestinations, ...knightHopDestinations])];
   } else if (isHydraSquare) {
     // baseModeDestinations already covers the knight-shaped third natively
     // (Hydra is stored as a Knight) - the other two thirds of its ring
-    // (straight-two, diagonal-two) are layered on top here. It never moves
+    // (straight-two, diagonal-two) are layered on top here, filtered the
+    // same way as the Dragon's added knight-hop above. It never moves
     // just one square, unlike a King.
-    destinations = [...new Set([...baseModeDestinations, ...hydraRingExtraDestinations(chess, square)])];
+    const ringExtraDestinations = hydraRingExtraDestinations(chess, square).filter((to) =>
+      keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+    );
+    destinations = [...new Set([...baseModeDestinations, ...ringExtraDestinations])];
   } else if (isCyclopsSquare) {
     const mover = chess.get(square);
     const specialTo = cyclopsSpecialCaptureSquare(square, mover.color);
     const specialOccupant = specialTo ? chess.get(specialTo) : null;
     destinations = [...baseModeDestinations];
-    if (specialTo && specialOccupant && specialOccupant.color !== mover.color && specialOccupant.type !== "k") {
+    if (
+      specialTo &&
+      specialOccupant &&
+      specialOccupant.color !== mover.color &&
+      specialOccupant.type !== "k" &&
+      keepsOwnKingSafeIfRelocated(chess, square, specialTo, mover.color)
+    ) {
       destinations.push(specialTo);
     }
   } else if (mover.type === "p" && isWithinPopeAura(ownPopeSquare, square)) {
@@ -536,14 +606,25 @@ export function computeLegalDestinations({
     // moves, plus the boosted forward-2 push and both diagonal-2 captures.
     destinations = [...baseModeDestinations];
     const forwardTo = popeBoostedForwardSquare(square, mover.color);
-    if (forwardTo && !destinations.includes(forwardTo) && !chess.get(forwardTo)) {
+    if (
+      forwardTo &&
+      !destinations.includes(forwardTo) &&
+      !chess.get(forwardTo) &&
+      keepsOwnKingSafeIfRelocated(chess, square, forwardTo, mover.color)
+    ) {
       const [ff, fr] = toCoord(square);
       const oneAhead = toSquare([ff, fr + (mover.color === "w" ? 1 : -1)]);
       if (!chess.get(oneAhead)) destinations.push(forwardTo);
     }
     for (const to of popeBoostedDiagonalCaptureSquares(square, mover.color)) {
       const occupant = chess.get(to);
-      if (occupant && occupant.color !== mover.color && occupant.type !== "k" && !destinations.includes(to)) {
+      if (
+        occupant &&
+        occupant.color !== mover.color &&
+        occupant.type !== "k" &&
+        !destinations.includes(to) &&
+        keepsOwnKingSafeIfRelocated(chess, square, to, mover.color)
+      ) {
         destinations.push(to);
       }
     }
