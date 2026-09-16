@@ -29,8 +29,18 @@ MAP_LENGTH = 50
 def _plain_node(rush_puzzle) -> dict:
     return {
         "custom_position": {"fen": rush_puzzle.start_fen},
+        # uci[4:5] is the promotion letter for a 5-character UCI move
+        # ("e7e8n"), "" (falsy) for an ordinary 4-character one - without
+        # this, a puzzle whose solution promotes to anything other than a
+        # Queen would silently break: _apply_move's own default is to
+        # auto-queen any pawn push landing on the back rank, and the wrong
+        # piece there can make the position's next solution step actually
+        # illegal (verified live on node 40, a Knight-underpromotion puzzle
+        # where auto-queening opened an extra diagonal that made the
+        # following king move walk into check).
         "solution": [
-            {"from_square": uci[0:2], "to_square": uci[2:4], "shoot": False} for uci in rush_puzzle.solution_moves
+            {"from_square": uci[0:2], "to_square": uci[2:4], "shoot": False, "promotion": uci[4:5] or None}
+            for uci in rush_puzzle.solution_moves
         ],
     }
 

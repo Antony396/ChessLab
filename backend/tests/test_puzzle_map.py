@@ -112,3 +112,37 @@ def test_solving_the_finale_hydra_node_unlocks_the_skin(client):
     assert body["puzzle_solved"] is True
     assert body["game"]["status"] == "checkmate"
     assert body["unlocked_hydra_skin"] is True
+
+
+def test_node_forty_underpromotion_puzzle_solves_cleanly(client):
+    # Node 40's first move promotes to a Knight (Lichess puzzle ZrgCo,
+    # e7e8n) - auto-queening it instead (the old bug: _plain_node dropped
+    # the promotion letter entirely) opens an extra diagonal that makes the
+    # puzzle's own next move illegal, since a Queen on e8 covers c6 but a
+    # Knight never would. Drives the full three-move solution through the
+    # real API rather than just the store/engine layer, so this fails the
+    # same way a player actually hit it (a 400 mid-solve) if it regresses.
+    token = _register(client, "mapPromo")
+    user_id = client.get("/api/social/me", headers=_auth(token)).json()["id"]
+    for i in range(1, 40):
+        from app import db
+
+        db.record_map_solve(user_id, i)
+
+    start = client.post("/api/puzzle-map/start", json={"index": 40}, headers=_auth(token))
+    assert start.status_code == 200, start.text
+
+    move1 = client.post(
+        "/api/puzzle-map/move", json={"from_square": "e7", "to_square": "e8", "shoot": False}, headers=_auth(token)
+    )
+    assert move1.status_code == 200, move1.text
+    assert move1.json()["correct"] is True
+
+    move2 = client.post(
+        "/api/puzzle-map/move", json={"from_square": "h7", "to_square": "c7", "shoot": False}, headers=_auth(token)
+    )
+    assert move2.status_code == 200, move2.text
+    body = move2.json()
+    assert body["correct"] is True
+    assert body["puzzle_solved"] is True
+    assert body["game"]["status"] == "checkmate"

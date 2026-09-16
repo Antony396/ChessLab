@@ -30,6 +30,18 @@ from app.social.auth import get_current_user_id
 router = APIRouter()
 
 
+def _promotion_piece_type(letter):
+    """None if `letter` is falsy (not a promotion), else the chess.PieceType
+    it names - e.g. "n" -> chess.KNIGHT. Without passing this through
+    explicitly, _apply_move's own default (auto-queen any pawn push landing
+    on the back rank) silently overrides a puzzle's real intended
+    underpromotion, which can make its very next solution step illegal (a
+    Queen's extra reach can cover a square the puzzle's own weaker piece
+    never would) - see puzzle_map/store.py's _plain_node for where this
+    comes from."""
+    return chess.PIECE_SYMBOLS.index(letter) if letter else None
+
+
 def _node_summary(solved: set[int], index: int) -> MapNodeSummary:
     unlocked = index == 1 or (index - 1) in solved
     return MapNodeSummary(index=index, solved=index in solved, unlocked=unlocked, is_finale=index == map_store.MAP_LENGTH)
@@ -97,7 +109,16 @@ def submit_map_move(payload: MapMoveRequest, user_id: str = Depends(get_current_
     board = attempt.game.board
     mover_color = board.turn
     try:
-        log_entry = _apply_move(attempt.game, mover_color, from_sq, to_sq, payload.shoot, payload.from_square, payload.to_square)
+        log_entry = _apply_move(
+            attempt.game,
+            mover_color,
+            from_sq,
+            to_sq,
+            payload.shoot,
+            payload.from_square,
+            payload.to_square,
+            promotion=_promotion_piece_type(expected.get("promotion")),
+        )
     except rules.IllegalMoveError as exc:
         raise HTTPException(400, f"This puzzle's solution has a problem: {exc}")
     attempt.game.action_log.append(log_entry)
@@ -111,7 +132,14 @@ def submit_map_move(payload: MapMoveRequest, user_id: str = Depends(get_current_
             reply_from = chess.parse_square(reply["from_square"].strip().lower())
             reply_to = chess.parse_square(reply["to_square"].strip().lower())
             reply_log = _apply_move(
-                attempt.game, board.turn, reply_from, reply_to, reply.get("shoot", False), reply["from_square"], reply["to_square"]
+                attempt.game,
+                board.turn,
+                reply_from,
+                reply_to,
+                reply.get("shoot", False),
+                reply["from_square"],
+                reply["to_square"],
+                promotion=_promotion_piece_type(reply.get("promotion")),
             )
         except (ValueError, rules.IllegalMoveError) as exc:
             raise HTTPException(400, f"This puzzle's solution has a problem: {exc}")
