@@ -138,6 +138,15 @@ export const KING_SKINS = {
     whiteTeamSrc: "/pieces/avatars/golden-ascendant-white.png",
     headSrc: "/pieces/avatars/golden-ascendant-head.png",
   },
+  // Dark charcoal armor under a green cape/gem accents, so - like Dark
+  // Knight/Hydra - whiteTeamSrc is a separate recolor (charcoal plate ->
+  // cream, green cape/gems and black linework untouched).
+  emeraldWarden: {
+    name: "Emerald Warden",
+    src: "/pieces/avatars/emerald-warden.png",
+    whiteTeamSrc: "/pieces/avatars/emerald-warden-white.png",
+    headSrc: "/pieces/avatars/emerald-warden-head.png",
+  },
 };
 const DEFAULT_SKIN = "classic";
 const STORAGE_KEY = "evoChessEquippedSkin";
