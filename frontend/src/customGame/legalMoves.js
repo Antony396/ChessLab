@@ -429,21 +429,42 @@ function mirrorMimicDestinations(chess, fromSquare, mimicType, mimicIsHydra, mim
 // so the scratch clone's own inCheck() directly answers the right
 // question without needing a color argument.
 function keepsOwnKingSafeIfRelocated(chess, fromSquare, toSquare, moverColor) {
-  const scratch = new Chess(chess.fen());
-  const piece = scratch.get(fromSquare);
-  if (!piece) return false;
-  scratch.remove(fromSquare);
-  scratch.remove(toSquare);
-  scratch.put({ type: piece.type, color: moverColor }, toSquare);
-  return !scratch.inCheck();
+  try {
+    const scratch = new Chess(chess.fen());
+    const piece = scratch.get(fromSquare);
+    if (!piece) return false;
+    scratch.remove(fromSquare);
+    scratch.remove(toSquare);
+    scratch.put({ type: piece.type, color: moverColor }, toSquare);
+    return !scratch.inCheck();
+  } catch (err) {
+    // Fails CLOSED (treats the candidate as unsafe/hidden) rather than
+    // crashing the whole computeLegalDestinations call - a thrown error
+    // here used to propagate all the way up uncaught, silently wiping out
+    // EVERY dot for that click (not just this one candidate square), with
+    // nothing printed anywhere to explain why - exactly the "dots
+    // randomly don't show, nothing in the console" symptom.
+    console.warn("keepsOwnKingSafeIfRelocated: treating candidate as unsafe after an error", {
+      fromSquare,
+      toSquare,
+      moverColor,
+      err,
+    });
+    return false;
+  }
 }
 
 // Same idea, for an Archer's (or a Mirror-mimicking-one's) shoot - the
 // shooter never relocates, only the target square loses its piece.
 function keepsOwnKingSafeIfShotFrom(chess, targetSquare) {
-  const scratch = new Chess(chess.fen());
-  scratch.remove(targetSquare);
-  return !scratch.inCheck();
+  try {
+    const scratch = new Chess(chess.fen());
+    scratch.remove(targetSquare);
+    return !scratch.inCheck();
+  } catch (err) {
+    console.warn("keepsOwnKingSafeIfShotFrom: treating candidate as unsafe after an error", { targetSquare, err });
+    return false;
+  }
 }
 
 // Returns [{ square, capture, shoot }] - capture flags whether that
@@ -490,6 +511,18 @@ export function computeLegalDestinations({
   if (mover.color !== chess.turn()) {
     const fenParts = chess.fen().split(" ");
     fenParts[1] = mover.color;
+    // The en-passant square's rank is only ever legal for ONE side to move
+    // (rank 6 for white, rank 3 for black) - chess.js's own FEN validator
+    // enforces this and throws otherwise. Right after any pawn double-step,
+    // flipping the active color above without also clearing this field
+    // produces exactly that illegal combination, which is what was actually
+    // throwing here: previewing an off-turn piece (routine - clicking the
+    // opponent's own piece, or either side in an online game) right after a
+    // pawn double-step anywhere on the board. This preview is a synthetic
+    // "what if it were this side's turn" snapshot, not a real position in
+    // the game's history, so there's nothing meaningful an en-passant
+    // square could add to it anyway.
+    fenParts[3] = "-";
     try {
       chess = new Chess(fenParts.join(" "));
     } catch (err) {
