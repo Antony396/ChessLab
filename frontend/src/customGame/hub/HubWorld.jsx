@@ -7,26 +7,15 @@ import {
   TILE_SIZE,
   PEDESTAL_TILE,
   PUZZLE_PEDESTAL_TILE,
-  LEADERBOARD_TILE,
   DOOR_TILE,
   isInsideRoom,
 } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
-import { sendFriendRequest, fetchMe } from "../social/api";
+import { sendFriendRequest, fetchMe, fetchBattlePassState } from "../social/api";
+import { pieceImageSrc } from "../../pieces/flat2dPieces";
 import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
-
-function FriendsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="9" cy="8" r="3" />
-      <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
-      <circle cx="17" cy="7" r="2.4" />
-      <path d="M15.5 14.2c2.4.4 4.5 2.6 4.5 5.8" />
-    </svg>
-  );
-}
 
 // A read-only avatar for someone else currently in this dorm - no input
 // handling, no click-to-move, just rendered at their last-known position
@@ -121,7 +110,7 @@ export const HEADROOM = 40;
 // two pedestals (see useHubState.js's LEADERBOARD_TILE) - now a real
 // InteractiveTrigger showing top ELO standings, same treatment as the
 // pedestals below (proximity glow, "press E" prompt, click-to-activate).
-function LeaderboardProp() {
+export function LeaderboardProp() {
   return (
     <div className="leaderboard-prop">
       <div className="leaderboard-glow" aria-hidden="true" />
@@ -146,7 +135,7 @@ function PedestalProp() {
 
 // The puzzle stand's own pedestal, mirrored on the right side of the room -
 // same treatment as PedestalProp (real furniture, not an icon-in-a-box).
-// Opens the choice between the Daily Puzzle and the Puzzle Map.
+// Opens the choice between the Puzzle Map and the Hero Puzzle Map.
 function PuzzlePedestalProp() {
   return (
     <div className="puzzle-pedestal-prop">
@@ -167,34 +156,16 @@ function PuzzlePedestalProp() {
 // Exported for CommonsWorld.jsx to reuse - your own profile picture and
 // skin picker shouldn't disappear just because you walked into a shared
 // room that owns no stations of its own.
-export function PlayerProfileBadge({ username, token }) {
+// `token` is unused now that the level pill's gone (see below) but kept
+// in the signature - both call sites already pass it, and PlayerStatsBadge
+// (right sidebar) is the one real place level lives now, not duplicated
+// here too.
+export function PlayerProfileBadge({ username }) {
   const equipped = useEquippedSkin();
-  // Own request (rather than threading level down from a parent that
-  // already has it) since currently no parent actually fetches /me at all
-  // - level has nowhere else to live yet. Not fatal if it fails; the badge
-  // just renders without the pill.
-  const [level, setLevel] = useState(null);
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    fetchMe(token)
-      .then((me) => {
-        if (!cancelled) setLevel(me.level);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
   return (
     <div className="hub-profile-badge-wrap">
       <div className="hub-profile-badge" title={KING_SKINS[equipped].name}>
         <img src={KING_SKINS[equipped].headSrc} alt="" className="hub-profile-badge-img" />
-        {level != null && (
-          <span className="hub-profile-level-pill" title={`Level ${level}`}>
-            {level}
-          </span>
-        )}
       </div>
       {username && <span className="hub-username-label">{username}</span>}
     </div>
@@ -220,10 +191,9 @@ export function SkinButton({ onClick }) {
   );
 }
 
-function FriendsButton({ onClick }) {
+export function FriendsButton({ onClick }) {
   return (
     <button type="button" className="hub-friends-toggle" onClick={onClick} title="Friends">
-      <FriendsIcon />
       <span>Friends</span>
     </button>
   );
@@ -232,7 +202,6 @@ function FriendsButton({ onClick }) {
 function ShopButton({ onClick }) {
   return (
     <button type="button" className="hub-shop-toggle" onClick={onClick} title="Shop">
-      <span aria-hidden="true">🛒</span>
       <span>Shop</span>
     </button>
   );
@@ -241,9 +210,121 @@ function ShopButton({ onClick }) {
 function BattlePassButton({ onClick }) {
   return (
     <button type="button" className="hub-battlepass-toggle" onClick={onClick} title="Battle Pass">
-      <span aria-hidden="true">🎖️</span>
       <span>Pass</span>
     </button>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+// Right-sidebar "Play" entry - an expandable group rather than a single
+// button, since it now covers all three ways to start something (Puzzles,
+// Online, Computer) instead of jumping straight to the deck-builder
+// overlay. Online and Computer both still land on that same overlay
+// (hub.setActiveOverlay("match-queue")) since the deck has to be built/
+// picked there either way - there's no separate "online-only" or
+// "computer-only" screen to pre-navigate to, this just groups the three
+// destinations under one heading instead of three loose sidebar buttons.
+// Online/Computer hidden while isVisiting for the same reason the
+// pedestal itself is hidden then (see the "E to interact" effect's own
+// comment above); Puzzles stays available, same as the puzzle pedestal.
+export function PlaySection({ isVisiting, onOpenPuzzles, onOpenMatchQueue }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="hub-play-section">
+      <button
+        type="button"
+        className="hub-play-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        title="Play"
+      >
+        <span>Play</span>
+        <span className={`hub-play-chevron${expanded ? " open" : ""}`}>
+          <ChevronIcon />
+        </span>
+      </button>
+      {expanded && (
+        <div className="hub-play-submenu">
+          <button type="button" className="hub-play-subitem" onClick={onOpenPuzzles}>
+            <span>Puzzles</span>
+          </button>
+          {!isVisiting && (
+            <>
+              <button type="button" className="hub-play-subitem" onClick={onOpenMatchQueue}>
+                <span>Online</span>
+              </button>
+              <button type="button" className="hub-play-subitem" onClick={onOpenMatchQueue}>
+                <span>Computer</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A solid-gold silhouette of the actual pawn art (same wP.png every deck
+// card/board uses), not a coin - masked rather than recolored via filter
+// so it comes out a clean flat gold instead of a sepia-tinted cream.
+export function GoldPawnIcon() {
+  const src = pieceImageSrc("wP");
+  return (
+    <span
+      className="hub-gold-pawn-icon"
+      style={{ WebkitMaskImage: `url(${src})`, maskImage: `url(${src})` }}
+    />
+  );
+}
+
+// Level (+ progress toward the next one) and currency readout for the
+// right sidebar - a second at-a-glance spot for the same stats
+// PlayerProfileBadge's level pill already shows on the left, so they're
+// visible without opening the Shop/Battle Pass. The progress fraction
+// reuses the Battle Pass endpoint's own xp_into_level/xp_for_next_level
+// rather than re-deriving the level curve client-side. Own fetch calls
+// rather than threading down from a parent, same reasoning as
+// PlayerProfileBadge's own (nothing upstream already has this data).
+export function PlayerStatsBadge({ token }) {
+  const [stats, setStats] = useState(null); // {level, currency, xpInto, xpForNext} | null
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    Promise.all([fetchMe(token), fetchBattlePassState(token)])
+      .then(([me, bp]) => {
+        if (!cancelled) {
+          setStats({ level: bp.level, currency: me.currency, xpInto: bp.xp_into_level, xpForNext: bp.xp_for_next_level });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  if (!stats) return null;
+  const progress = stats.xpForNext > 0 ? Math.min(1, stats.xpInto / stats.xpForNext) : 0;
+
+  return (
+    <div className="hub-player-stats">
+      <span className="hub-stat-level" title={`Level ${stats.level} - ${stats.xpInto}/${stats.xpForNext} XP`}>
+        <span className="hub-stat-level-label">LV {stats.level}</span>
+        <span className="hub-stat-level-bar">
+          <span className="hub-stat-level-bar-fill" style={{ width: `${progress * 100}%` }} />
+        </span>
+      </span>
+      <span className="hub-stat-currency" title={`${stats.currency} currency`}>
+        <GoldPawnIcon />
+        {stats.currency}
+      </span>
+    </div>
   );
 }
 
@@ -295,7 +376,6 @@ export default function HubWorld({
   onOpenFriends,
   onOpenPuzzles,
   onOpenSkins,
-  onOpenLeaderboard,
   onOpenShop,
   onOpenBattlePass,
   onOpenCommons,
@@ -353,7 +433,6 @@ export default function HubWorld({
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!isVisiting && hub.isNearPedestal) hub.setActiveOverlay("match-queue");
       else if (hub.isNearPuzzlePedestal) onOpenPuzzles();
-      else if (hub.isNearLeaderboard) onOpenLeaderboard();
       else if (!isVisiting && hub.isNearDoor) onOpenCommons();
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -361,12 +440,10 @@ export default function HubWorld({
   }, [
     hub.isNearPedestal,
     hub.isNearPuzzlePedestal,
-    hub.isNearLeaderboard,
     hub.isNearDoor,
     hub.setActiveOverlay,
     isVisiting,
     onOpenPuzzles,
-    onOpenLeaderboard,
     onOpenCommons,
   ]);
 
@@ -390,13 +467,21 @@ export default function HubWorld({
 
   return (
     <>
-      <div className="hub-side-panel">
-        <PlayerProfileBadge username={username} token={token} />
+      <div className="hub-side-panel left">
+        <PlayerProfileBadge username={username} />
         <SkinButton onClick={onOpenSkins} />
         <ShopButton onClick={onOpenShop} />
         <BattlePassButton onClick={onOpenBattlePass} />
-        <FriendsButton onClick={onOpenFriends} />
         <LogoutButton onClick={onLogout} />
+      </div>
+      <div className="hub-side-panel right">
+        <PlayerStatsBadge token={token} />
+        <PlaySection
+          isVisiting={isVisiting}
+          onOpenPuzzles={onOpenPuzzles}
+          onOpenMatchQueue={() => hub.setActiveOverlay("match-queue")}
+        />
+        <FriendsButton onClick={onOpenFriends} />
       </div>
       <div className="hub-room-wrap">
         {isVisiting && <VisitingBanner username={visiting.username} onReturnHome={onReturnHome} />}
@@ -433,7 +518,7 @@ export default function HubWorld({
                 isNear={hub.isNearDoor}
                 label="Commons"
                 promptLabel="Click or press E"
-                icon={<span aria-hidden="true">🚪</span>}
+                variant="door"
                 onActivate={onOpenCommons}
               />
             )}
@@ -449,16 +534,12 @@ export default function HubWorld({
               onActivate={onOpenPuzzles}
             />
 
-            <InteractiveTrigger
-              tile={LEADERBOARD_TILE}
-              tileSize={TILE_SIZE}
-              isNear={hub.isNearLeaderboard}
-              label="Leaderboard"
-              promptLabel="Click or press E"
-              variant="leaderboard"
-              icon={<LeaderboardProp />}
-              onActivate={onOpenLeaderboard}
-            />
+            {/* No leaderboard station here anymore - it's a genuinely
+                shared/global thing (everyone's standings, not "whose
+                room"), so it lives in the Commons now (see
+                CommonsWorld.jsx) instead of duplicating it in every
+                private dorm. LeaderboardProp/LEADERBOARD_TILE are still
+                exported/defined above for that reuse. */}
 
             {presence?.occupants.map((occupant) => (
               <RemoteAvatar
@@ -488,7 +569,7 @@ export default function HubWorld({
           Move with <strong>WASD</strong> or the arrow keys, or click a tile to walk there.{" "}
           {isVisiting
             ? "This is someone else's dorm - just visiting."
-            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for the Daily Puzzle and the Puzzle Map."}
+            : "Approach a pedestal to draft your deck and start a game, or the puzzle stand for the Puzzle Map and Hero Puzzles."}
         </p>
       </div>
     </>

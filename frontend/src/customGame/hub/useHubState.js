@@ -50,17 +50,54 @@ const AVATAR_START = { x: 7, y: 6 };
 // lines up with ITS entrance notch.
 export const COMMONS_EXIT_TILE = { x: 7, y: 1 };
 const COMMONS_AVATAR_START = { x: 7, y: 2 };
+// A teleport point inside the Commons leading to the Shop (see
+// SHOP_COUNTER_TILE/SHOP_EXIT_TILE below) - open floor, left of center, not
+// aligned to any painted feature since commons.jpg predates this trigger.
+export const COMMONS_SHOP_TILE = { x: 3, y: 4 };
 // The dorm's own door, leading out to the Commons - positioned to match
 // the painted door on the left wall of dorm-room.jpg.
 export const DOOR_TILE = { x: 1, y: 2 };
 
+// The Shop - a third room, reached from the Commons (see HeroChessApp.jsx's
+// handleVisitShop/handleReturnToCommons) rather than from a player's own
+// dorm, and - unlike the Commons - not a shared space: nobody else can ever
+// be standing in it, so it needs no presence wiring, just the same
+// walkable-room treatment as every other room here. Reuses this same grid
+// (HUB_COLS/HUB_ROWS/TILE_SIZE, isInsideRoom's ellipse) for the same reason
+// Commons does - see ShopWorld.jsx. SHOP_COUNTER_TILE lines up with the
+// curtained counter stall painted at the top-center of shop_area.png;
+// SHOP_EXIT_TILE/SHOP_AVATAR_START mirror COMMONS_EXIT_TILE/
+// COMMONS_AVATAR_START's own bottom-of-room "the way back" shape, just
+// flipped to the bottom edge since this scene has no painted door to align
+// to - approximate placement, nudge once it's actually on screen.
+export const SHOP_COUNTER_TILE = { x: 7, y: 2 };
+export const SHOP_EXIT_TILE = { x: 7, y: 7 };
+const SHOP_AVATAR_START = { x: 7, y: 6 };
+
 // The room reads as round (igloo-inspired) by inscribing an ellipse in the
-// tile grid's bounding box and treating anything outside it as unwalkable -
-// the actual movement grid stays plain rectangular coordinates underneath
-// (no hex/polar math needed anywhere else), this just carves its corners
-// off. hubWorld.css clips the room's own visuals to the matching ellipse.
-const ELLIPSE_CENTER = { x: (HUB_COLS * TILE_SIZE) / 2, y: (HUB_ROWS * TILE_SIZE) / 2 };
-const ELLIPSE_RADII = { x: (HUB_COLS * TILE_SIZE) / 2, y: (HUB_ROWS * TILE_SIZE) / 2 };
+// tile grid and treating anything outside it as unwalkable - the actual
+// movement grid stays plain rectangular coordinates underneath (no hex/
+// polar math needed anywhere else), this just carves its corners off. The
+// room's oval shape itself is just the painted background image; nothing
+// here clips it, this only governs which tiles the avatar can stand on.
+//
+// The vertical numbers here are NOT just "inscribed in the grid's own
+// bounding box" (that was the original approach, and it let players walk
+// well past the actual painted floor - up into the back wall/banners,
+// since the wall band eats a good third of the room image's height and
+// the walkable area never accounted for it). Measured instead from the
+// actual source art: sampled dorm-room.jpg and Commons_revamped.jpg
+// pixel-by-pixel for where the wall-to-floor shadow seam falls, mapped
+// through each image's own background-size: cover transform into this
+// grid's coordinate space, then averaged (the two rooms' independently-
+// measured floor tops landed within a few px of each other). The
+// horizontal radius, on the other hand, stays fully inscribed - an
+// initial attempt at tightening it too ended up excluding real floor
+// near the pedestals on the sides (the floor is wider side-to-side than
+// a single sampled row suggested), so only the vertical extent - where
+// the wall band genuinely eats into the grid - is pulled in.
+const ELLIPSE_CENTER = { x: (HUB_COLS * TILE_SIZE) / 2, y: 354 };
+const ELLIPSE_RADII = { x: (HUB_COLS * TILE_SIZE) / 2, y: 195 };
 
 export function isInsideRoom(tile) {
   const px = tile.x * TILE_SIZE + TILE_SIZE / 2;
@@ -81,11 +118,14 @@ function tilesEqual(a, b) {
   return a.x === b.x && a.y === b.y;
 }
 
-// room is "dorm" (default) or "commons" - each has its own set of
+// room is "dorm" (default), "commons", or "shop" - each has its own set of
 // unwalkable prop tiles (see useHubState's own room param below).
 function isBlocked(tile, room) {
   if (room === "commons") {
-    return tilesEqual(tile, COMMONS_EXIT_TILE) || !isInsideRoom(tile);
+    return tilesEqual(tile, COMMONS_EXIT_TILE) || tilesEqual(tile, COMMONS_SHOP_TILE) || !isInsideRoom(tile);
+  }
+  if (room === "shop") {
+    return tilesEqual(tile, SHOP_COUNTER_TILE) || tilesEqual(tile, SHOP_EXIT_TILE) || !isInsideRoom(tile);
   }
   return (
     tilesEqual(tile, PEDESTAL_TILE) ||
@@ -109,14 +149,20 @@ function chebyshevDistance(a, b) {
 // a Context - nothing outside HubWorld's own tree needs this state, so a
 // Provider would just be ceremony.
 //
-// room ("dorm" | "commons") - the SAME position/facing/step/walkTo state
-// serves both rooms rather than each having its own hook instance, since
-// switching between them is really just "which grid's blocked-tile rules
-// and start position apply right now" (see isBlocked above) - the effect
-// below resets position to the new room's own start the moment room
+// room ("dorm" | "commons" | "shop") - the SAME position/facing/step/walkTo
+// state serves all three rather than each having its own hook instance,
+// since switching between them is really just "which grid's blocked-tile
+// rules and start position apply right now" (see isBlocked above) - the
+// effect below resets position to the new room's own start the moment room
 // changes, the same way arriving at a fresh location always would.
+function startFor(room) {
+  if (room === "commons") return COMMONS_AVATAR_START;
+  if (room === "shop") return SHOP_AVATAR_START;
+  return AVATAR_START;
+}
+
 export function useHubState(room = "dorm") {
-  const [position, setPosition] = useState(room === "commons" ? COMMONS_AVATAR_START : AVATAR_START);
+  const [position, setPosition] = useState(startFor(room));
   const [facing, setFacing] = useState("down");
   const [isHopping, setIsHopping] = useState(false);
   // Shared with the deck builder and the game board (see skinStore.js) -
@@ -135,6 +181,9 @@ export function useHubState(room = "dorm") {
   const isNearLeaderboard = chebyshevDistance(position, LEADERBOARD_TILE) <= 1;
   const isNearDoor = chebyshevDistance(position, DOOR_TILE) <= 1;
   const isNearCommonsExit = chebyshevDistance(position, COMMONS_EXIT_TILE) <= 1;
+  const isNearShopCounter = chebyshevDistance(position, SHOP_COUNTER_TILE) <= 1;
+  const isNearShopExit = chebyshevDistance(position, SHOP_EXIT_TILE) <= 1;
+  const isNearCommonsShop = chebyshevDistance(position, COMMONS_SHOP_TILE) <= 1;
 
   const hopDuration = 220; // ms - must match hubWorld.css's .avatar.hopping animation
 
@@ -159,7 +208,7 @@ export function useHubState(room = "dorm") {
   // fresh arrival anywhere should.
   useEffect(() => {
     walkHandleRef.current?.();
-    const start = room === "commons" ? COMMONS_AVATAR_START : AVATAR_START;
+    const start = startFor(room);
     positionRef.current = start;
     setPosition(start);
     setFacing("down");
@@ -274,6 +323,9 @@ export function useHubState(room = "dorm") {
     isNearLeaderboard,
     isNearDoor,
     isNearCommonsExit,
+    isNearShopCounter,
+    isNearShopExit,
+    isNearCommonsShop,
     step,
     walkTo,
   };

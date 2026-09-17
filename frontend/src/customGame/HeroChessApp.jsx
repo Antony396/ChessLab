@@ -5,6 +5,7 @@ import OnlineWaitingRoom from "./OnlineWaitingRoom";
 import OnlineGamePlay from "./OnlineGamePlay";
 import HubWorld from "./hub/HubWorld";
 import CommonsWorld from "./hub/CommonsWorld";
+import ShopWorld from "./hub/ShopWorld";
 import { useHubState } from "./hub/useHubState";
 import FriendsPanel from "./social/FriendsPanel";
 import SkinsPanel from "./hub/SkinsPanel";
@@ -16,7 +17,7 @@ import SimulWaitingRoom from "./social/SimulWaitingRoom";
 import ChallengeWaitingForAccept from "./social/ChallengeWaitingForAccept";
 import IncomingChallengePrompt from "./social/IncomingChallengePrompt";
 import PuzzleMap from "./puzzleMap/PuzzleMap";
-import DailyPuzzle from "./dailyPuzzle/DailyPuzzle";
+import HeroPuzzleMap from "./heroPuzzleMap/HeroPuzzleMap";
 import { usePresence, COMMONS_DORM_ID } from "./social/usePresence";
 import { postLogout, postSimulAccept, postSimulDecline } from "./social/api";
 import { clearAuth } from "./social/authStore";
@@ -68,15 +69,21 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
   // Am I currently in the Commons instead of a dorm at all - see
   // handleVisitCommons/handleReturnHome and useHubState's own room param.
   const [visitingCommons, setVisitingCommons] = useState(false);
+  // Am I currently in the Shop, reached from inside the Commons (see
+  // handleVisitShop/handleReturnToCommons) - unlike visitingCommons, this
+  // never resets on its own; leaving the Shop always lands back in the
+  // Commons (visitingCommons stays true), never straight out to the dorm.
+  const [visitingShop, setVisitingShop] = useState(false);
   // The dorm room hub is the default landing spot - but a shared multiplayer
   // link should still drop someone straight into drafting a deck to join
   // that room, exactly like before, not into the hub first. Reused for the
-  // Commons too (see useHubState's room param) rather than a second hook
-  // instance, so there's one movement state, not two to keep in sync.
-  const hub = useHubState(visitingCommons ? "commons" : "dorm");
+  // Commons and Shop too (see useHubState's room param) rather than a
+  // separate hook instance each, so there's one movement state, not three
+  // to keep in sync.
+  const hub = useHubState(visitingShop ? "shop" : visitingCommons ? "commons" : "dorm");
 
   const [inPuzzleMap, setInPuzzleMap] = useState(false);
-  const [inDailyPuzzle, setInDailyPuzzle] = useState(false);
+  const [inHeroPuzzleMap, setInHeroPuzzleMap] = useState(false);
   // A friend challenge I've been sent, awaiting MY accept/decline:
   // {roomId, blackToken, fromUsername}. Rendered as an always-on-top prompt
   // (see IncomingChallengePrompt) regardless of whatever else is on screen.
@@ -188,6 +195,20 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     presence.leaveDorm();
     setVisitingFriend(null);
     setVisitingCommons(false);
+    setVisitingShop(false);
+  }
+
+  // The Shop isn't a shared presence room like the Commons (nobody else is
+  // ever in it), so entering/leaving it is a plain local toggle - no
+  // presence.visit/leaveDorm call, since you never actually left the
+  // Commons as far as presence (or anyone else standing in it) is
+  // concerned.
+  function handleVisitShop() {
+    setVisitingShop(true);
+  }
+
+  function handleReturnToCommons() {
+    setVisitingShop(false);
   }
 
   function handleChallengeSent(challenge) {
@@ -279,14 +300,57 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     content = <CustomGamePlay initialGame={game} onExit={handleExit} />;
   } else if (inPuzzleMap) {
     content = <PuzzleMap token={auth.token} onExit={() => setInPuzzleMap(false)} />;
-  } else if (inDailyPuzzle) {
-    content = <DailyPuzzle token={auth.token} onExit={() => setInDailyPuzzle(false)} />;
+  } else if (inHeroPuzzleMap) {
+    content = <HeroPuzzleMap token={auth.token} onExit={() => setInHeroPuzzleMap(false)} />;
+  } else if (visitingShop) {
+    // Same trimmed overlay-chrome pattern as the Commons branch below, just
+    // "shop" instead of "skins" - the Shop counter's whole job is opening
+    // this exact panel (see ShopWorld.jsx's onOpenShop).
+    content = (
+      <>
+        <ShopWorld
+          hub={hub}
+          onReturnToCommons={handleReturnToCommons}
+          username={auth.user.username}
+          token={auth.token}
+          onOpenSkins={() => hub.setActiveOverlay("skins")}
+          onOpenShop={() => hub.setActiveOverlay("shop")}
+        />
+        {(hub.activeOverlay === "skins" || hub.activeOverlay === "shop") && (
+          <div className="hub-overlay-backdrop" onClick={() => hub.setActiveOverlay(null)}>
+            <div className="hub-overlay-panel" onClick={(e) => e.stopPropagation()}>
+              <span className="hub-overlay-title">{hub.activeOverlay === "shop" ? "Shop" : "Choose a Skin"}</span>
+              <button
+                type="button"
+                className="hub-overlay-close"
+                onClick={() => hub.setActiveOverlay(null)}
+                title="Back to the Shop"
+              >
+                ×
+              </button>
+              {hub.activeOverlay === "shop" ? <ShopPanel token={auth.token} /> : <SkinsPanel token={auth.token} />}
+            </div>
+          </div>
+        )}
+      </>
+    );
   } else if (visitingCommons) {
-    // Same overlay chrome the hub uses (see the default branch below),
-    // trimmed to just "skins" - the Commons has no other stations, but the
-    // player's own skin picker still needs somewhere to open into (see
-    // CommonsWorld.jsx's own comment on why the profile badge/skin button
-    // still show there at all).
+    // Same overlay chrome/stations the hub offers (Play/Puzzles/Friends,
+    // plus the skin picker) now that Commons has its own right sidebar -
+    // just no Shop/Battle Pass (left-sidebar-only in the hub, not asked
+    // for here) and no pedestal furniture of its own (match-queue/
+    // puzzle-choice both still route through the shared overlay chrome
+    // below, same as the hub).
+    const commonsOverlayTitle =
+      hub.activeOverlay === "friends"
+        ? "Friends"
+        : hub.activeOverlay === "skins"
+          ? "Choose a Skin"
+          : hub.activeOverlay === "leaderboard"
+            ? "Leaderboard"
+            : hub.activeOverlay === "puzzle-choice"
+              ? "Puzzles"
+              : "Play a Game";
     content = (
       <>
         <CommonsWorld
@@ -297,11 +361,15 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
           token={auth.token}
           myUserId={auth.user.id}
           onOpenSkins={() => hub.setActiveOverlay("skins")}
+          onOpenFriends={() => hub.setActiveOverlay("friends")}
+          onOpenPuzzles={() => hub.setActiveOverlay("puzzle-choice")}
+          onOpenLeaderboard={() => hub.setActiveOverlay("leaderboard")}
+          onEnterShop={handleVisitShop}
         />
-        {hub.activeOverlay === "skins" && (
+        {hub.activeOverlay && (
           <div className="hub-overlay-backdrop" onClick={() => hub.setActiveOverlay(null)}>
             <div className="hub-overlay-panel" onClick={(e) => e.stopPropagation()}>
-              <span className="hub-overlay-title">Choose a Skin</span>
+              <span className="hub-overlay-title">{commonsOverlayTitle}</span>
               <button
                 type="button"
                 className="hub-overlay-close"
@@ -310,7 +378,30 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
               >
                 ×
               </button>
-              <SkinsPanel token={auth.token} />
+              {hub.activeOverlay === "friends" ? (
+                <FriendsPanel token={auth.token} onVisit={handleVisitFriend} onChallenge={handleChallengeSent} />
+              ) : hub.activeOverlay === "skins" ? (
+                <SkinsPanel token={auth.token} />
+              ) : hub.activeOverlay === "leaderboard" ? (
+                <LeaderboardPanel token={auth.token} myUserId={auth.user.id} />
+              ) : hub.activeOverlay === "puzzle-choice" ? (
+                <PuzzleChoicePanel
+                  onChoosePuzzleMap={() => {
+                    hub.setActiveOverlay(null);
+                    setInPuzzleMap(true);
+                  }}
+                  onChooseHeroPuzzleMap={() => {
+                    hub.setActiveOverlay(null);
+                    setInHeroPuzzleMap(true);
+                  }}
+                />
+              ) : (
+                <DeckBuilder
+                  onGameStarted={handleGameStartedFromHub}
+                  onOnlineGameCreated={handleOnlineGameCreatedFromHub}
+                  token={auth.token}
+                />
+              )}
             </div>
           </div>
         )}
@@ -322,8 +413,8 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
     // deck-builder flow as a station overlay on top of the room rather than
     // replacing it - closing the overlay without starting a match just
     // returns to the hub, in place, with the avatar exactly where it was
-    // left. The puzzle pedestal instead opens a small choice popup (Daily
-    // Puzzle vs the Puzzle Map) through this same overlay chrome.
+    // left. The puzzle pedestal instead opens a small choice popup (the
+    // Puzzle Map vs the Hero Puzzle Map) through this same overlay chrome.
     const overlayTitle =
       hub.activeOverlay === "friends"
         ? "Friends"
@@ -353,7 +444,6 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
           onOpenSkins={() => hub.setActiveOverlay("skins")}
           onOpenShop={() => hub.setActiveOverlay("shop")}
           onOpenBattlePass={() => hub.setActiveOverlay("battle-pass")}
-          onOpenLeaderboard={() => hub.setActiveOverlay("leaderboard")}
           onOpenCommons={handleVisitCommons}
           onLogout={handleLogout}
         />
@@ -385,9 +475,9 @@ export default function HeroChessApp({ joinGameId: joinRoomId, auth }) {
                     hub.setActiveOverlay(null);
                     setInPuzzleMap(true);
                   }}
-                  onChooseDailyPuzzle={() => {
+                  onChooseHeroPuzzleMap={() => {
                     hub.setActiveOverlay(null);
-                    setInDailyPuzzle(true);
+                    setInHeroPuzzleMap(true);
                   }}
                 />
               ) : (

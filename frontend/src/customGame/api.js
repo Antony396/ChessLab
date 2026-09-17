@@ -1,3 +1,5 @@
+import { clearAuth } from "./social/authStore";
+
 // In production (Vercel), set VITE_API_BASE_URL to the deployed backend's
 // origin (e.g. "https://your-app.onrender.com"). Falls back to local dev.
 const API_ROOT = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
@@ -12,6 +14,7 @@ async function handle(res) {
     } catch {
       // not JSON, keep statusText
     }
+    if (res.status === 401) clearAuth();
     throw new Error(detail);
   }
   return res.json();

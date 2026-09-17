@@ -44,7 +44,7 @@ header h1 {
 
 .home-link {
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -168,16 +168,16 @@ header h1 {
 
 .game-item .meta {
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .badge {
   display: inline-block;
   width: fit-content;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 4px;
 }
 
@@ -233,7 +233,7 @@ header h1 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   margin-bottom: 8px;
   width: 100%;
@@ -308,7 +308,7 @@ header h1 {
 .show-path-btn {
   margin-left: auto;
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   padding: 3px 10px;
   border: 1px solid var(--accent-border);
   border-radius: 999px;
@@ -323,7 +323,7 @@ header h1 {
 
 .best-move-label {
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -343,13 +343,13 @@ header h1 {
 .best-move-line {
   margin: 0 0 4px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text);
 }
 
 .best-move-caveat {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text);
   opacity: 0.75;
 }
@@ -398,7 +398,7 @@ header h1 {
 .move-eval {
   color: var(--text);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .eval-graph {
@@ -441,7 +441,7 @@ header h1 {
 .mistake-eval {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text);
 }
 

@@ -69,16 +69,115 @@ function playClick({ freq, duration, noiseAmount, gain }) {
   }
 }
 
+// "Tight Double Knock" - a bandpass-noise thump + sine body, played
+// twice in quick succession (30ms apart, the second hit quieter) rather
+// than once - the near-immediate second hit reads as a quick rattle/
+// contact-bounce, which is what makes it land as tactile rather than a
+// flat single click. Chosen after A/B comparing ~18 synthesized options
+// live in-browser. A small random pitch variance per call keeps repeated
+// moves from all sounding identical/robotic.
 export function playMoveSound() {
-  playClick({ freq: 850, duration: 0.05, noiseAmount: 0.55, gain: 0.3 });
+  const ctx = getContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const variance = 0.94 + Math.random() * 0.1;
+
+    function knock(t, gainScale) {
+      const thumpDuration = 0.02;
+      const thumpBufferSize = Math.max(1, Math.floor(ctx.sampleRate * thumpDuration));
+      const thumpBuffer = ctx.createBuffer(1, thumpBufferSize, ctx.sampleRate);
+      const thumpData = thumpBuffer.getChannelData(0);
+      for (let i = 0; i < thumpBufferSize; i++) thumpData[i] = (Math.random() * 2 - 1) * (1 - i / thumpBufferSize) ** 0.6;
+      const thump = ctx.createBufferSource();
+      thump.buffer = thumpBuffer;
+      const thumpFilter = ctx.createBiquadFilter();
+      thumpFilter.type = "bandpass";
+      thumpFilter.frequency.value = 420 * variance;
+      thumpFilter.Q.value = 1.1;
+      const thumpGain = ctx.createGain();
+      thumpGain.gain.setValueAtTime(0.28 * gainScale, t);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, t + thumpDuration);
+      thump.connect(thumpFilter).connect(thumpGain).connect(ctx.destination);
+
+      const bodyDuration = 0.12;
+      const body = ctx.createOscillator();
+      body.type = "sine";
+      body.frequency.setValueAtTime(150 * variance, t);
+      body.frequency.exponentialRampToValueAtTime(70 * variance, t + bodyDuration);
+      const bodyGain = ctx.createGain();
+      bodyGain.gain.setValueAtTime(0.001, t);
+      bodyGain.gain.linearRampToValueAtTime(0.32 * gainScale, t + 0.01);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, t + bodyDuration);
+      body.connect(bodyGain).connect(ctx.destination);
+
+      thump.start(t);
+      thump.stop(t + thumpDuration);
+      body.start(t);
+      body.stop(t + bodyDuration);
+    }
+
+    // Both hits scheduled up front on the audio clock (not via
+    // setTimeout for the second one), so the 30ms gap is sample-accurate
+    // rather than at the mercy of main-thread/event-loop jitter.
+    knock(now, 1);
+    knock(now + 0.03, 0.45);
+  } catch {
+    // Sound is a nice-to-have, never worth breaking a move over.
+  }
 }
 
 export function playCaptureSound() {
   playClick({ freq: 500, duration: 0.075, noiseAmount: 0.6, gain: 0.32 });
 }
 
+// A light single "tap" - the same bandpass-thump + sine-body language as
+// playMoveSound above, but scaled way down (quieter, shorter, pitched a
+// touch higher) and NOT doubled - this fires on every single footstep in
+// the hub, so a full double-knock repeated at walking cadence would get
+// fatiguing fast, and a lighter contact than a piece actually landing
+// makes sense anyway.
 export function playHopSound() {
-  playClick({ freq: 320, duration: 0.06, noiseAmount: 0.7, gain: 0.2 });
+  const ctx = getContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const variance = 0.92 + Math.random() * 0.14;
+
+    const thumpDuration = 0.014;
+    const thumpBufferSize = Math.max(1, Math.floor(ctx.sampleRate * thumpDuration));
+    const thumpBuffer = ctx.createBuffer(1, thumpBufferSize, ctx.sampleRate);
+    const thumpData = thumpBuffer.getChannelData(0);
+    for (let i = 0; i < thumpBufferSize; i++) thumpData[i] = (Math.random() * 2 - 1) * (1 - i / thumpBufferSize) ** 0.6;
+    const thump = ctx.createBufferSource();
+    thump.buffer = thumpBuffer;
+    const thumpFilter = ctx.createBiquadFilter();
+    thumpFilter.type = "bandpass";
+    thumpFilter.frequency.value = 520 * variance;
+    thumpFilter.Q.value = 1.1;
+    const thumpGain = ctx.createGain();
+    thumpGain.gain.setValueAtTime(0.16, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + thumpDuration);
+    thump.connect(thumpFilter).connect(thumpGain).connect(ctx.destination);
+
+    const bodyDuration = 0.06;
+    const body = ctx.createOscillator();
+    body.type = "sine";
+    body.frequency.setValueAtTime(190 * variance, now);
+    body.frequency.exponentialRampToValueAtTime(110 * variance, now + bodyDuration);
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.setValueAtTime(0.001, now);
+    bodyGain.gain.linearRampToValueAtTime(0.14, now + 0.005);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + bodyDuration);
+    body.connect(bodyGain).connect(ctx.destination);
+
+    thump.start(now);
+    thump.stop(now + thumpDuration);
+    body.start(now);
+    body.stop(now + bodyDuration);
+  } catch {
+    // Sound is a nice-to-have, never worth breaking movement over.
+  }
 }
 
 // A short downward pitch sweep - deliberately NOT playClick's percussive

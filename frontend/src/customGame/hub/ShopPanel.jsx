@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { KING_SKINS, useEquippedSkin, setEquippedSkin } from "../skinStore";
-import { fetchShopState, purchaseSkin } from "../social/api";
+import { fetchShopState, purchaseSkin, fetchMe } from "../social/api";
+import { GoldPawnIcon } from "./HubWorld";
 
 // The skins that actually have a `cost` (see skinStore.js) - everything
 // else (free-by-default, or gated by streak/map progress) has nothing to
@@ -15,6 +16,7 @@ export default function ShopPanel({ token }) {
   const equipped = useEquippedSkin();
   const [currency, setCurrency] = useState(0);
   const [ownedSkins, setOwnedSkins] = useState([]);
+  const [level, setLevel] = useState(0);
   const [loading, setLoading] = useState(true);
   const [purchasingKey, setPurchasingKey] = useState(null);
   const [error, setError] = useState(null);
@@ -28,10 +30,10 @@ export default function ShopPanel({ token }) {
 
   useEffect(() => {
     let cancelled = false;
-    reload()
+    Promise.all([reload(), fetchMe(token).then((me) => !cancelled && setLevel(me.level))])
       .catch(() => {
-        // Leave currency/ownership at their defaults - every card just
-        // shows as unaffordable/unowned until a retry succeeds.
+        // Leave currency/ownership/level at their defaults - every card
+        // just shows as unaffordable/locked until a retry succeeds.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -58,14 +60,17 @@ export default function ShopPanel({ token }) {
     <div className="shop-panel">
       <div className="shop-panel-header">
         <p className="shop-panel-hint">Spend currency (earned from online wins) on a King skin, permanently.</p>
-        <span className="shop-currency-badge">🪙 {loading ? "…" : currency}</span>
+        <span className="shop-currency-badge">
+          <GoldPawnIcon /> {loading ? "…" : currency}
+        </span>
       </div>
       {error && <p className="shop-panel-error">{error}</p>}
       <div className="skins-grid">
         {SHOP_SKIN_ENTRIES.map(([key, skin]) => {
           const owned = ownedSkins.includes(key);
           const isEquipped = key === equipped;
-          const canAfford = currency >= skin.cost;
+          const levelLocked = Boolean(skin.requiresLevel) && level < skin.requiresLevel;
+          const canAfford = currency >= skin.cost && !levelLocked;
           const isPurchasing = purchasingKey === key;
           return (
             <div key={key} className={`skin-card shop-card${isEquipped ? " equipped" : ""}${owned ? "" : " locked"}`}>
@@ -79,9 +84,13 @@ export default function ShopPanel({ token }) {
                   type="button"
                   className="shop-card-btn owned"
                   disabled={isEquipped}
-                  onClick={() => setEquippedSkin(key, { ownedSkins }, token)}
+                  onClick={() => setEquippedSkin(key, { ownedSkins, level }, token)}
                 >
                   {isEquipped ? "Equipped" : "Equip"}
+                </button>
+              ) : levelLocked ? (
+                <button type="button" className="shop-card-btn buy unaffordable" disabled title={`Reach Level ${skin.requiresLevel} to unlock (currently Level ${level})`}>
+                  {`Requires Lv ${skin.requiresLevel}`}
                 </button>
               ) : (
                 <button
@@ -91,7 +100,13 @@ export default function ShopPanel({ token }) {
                   onClick={() => handlePurchase(key)}
                   title={canAfford ? `Buy ${skin.name}` : `Need ${skin.cost - currency} more currency`}
                 >
-                  {isPurchasing ? "Buying…" : `🪙 ${skin.cost}`}
+                  {isPurchasing ? (
+                    "Buying…"
+                  ) : (
+                    <>
+                      <GoldPawnIcon /> {skin.cost}
+                    </>
+                  )}
                 </button>
               )}
             </div>

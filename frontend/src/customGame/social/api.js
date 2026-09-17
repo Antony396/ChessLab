@@ -1,3 +1,5 @@
+import { clearAuth } from "./authStore";
+
 const API_ROOT = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 const API_BASE = `${API_ROOT}/api/social`;
 
@@ -10,6 +12,11 @@ async function handle(res) {
     } catch {
       // not JSON, keep statusText
     }
+    // A dead/expired token (e.g. the in-memory backend session store got
+    // reset by a server restart) should drop straight back to the sign-in
+    // screen instead of leaving the app looking "logged in" while every
+    // authed action silently 401s.
+    if (res.status === 401) clearAuth();
     throw new Error(detail);
   }
   return res.json();

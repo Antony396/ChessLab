@@ -40,7 +40,7 @@
 .auth-subtitle {
   margin: 0 0 24px;
   text-align: center;
-  font-size: 13px;
+  font-size: 14px;
   color: #93a0b4;
 }
 
@@ -54,7 +54,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -78,8 +78,12 @@
   border-color: #f5c542;
 }
 
+.auth-field input:focus-visible {
+  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.5);
+}
+
 .auth-error {
-  font-size: 13px;
+  font-size: 14px;
   color: #fca5a5;
   background: rgba(127, 29, 29, 0.25);
   border: 1px solid rgba(248, 113, 113, 0.35);
@@ -114,7 +118,7 @@
   border: none;
   background: none;
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   color: #93a0b4;
   text-align: center;
   cursor: pointer;

@@ -9,13 +9,13 @@ class MapNodeSummary(BaseModel):
     index: int
     solved: bool
     unlocked: bool
-    is_finale: bool  # node 50 - solving it unlocks the Hydra King skin
+    is_finale: bool  # node 50 - solving it unlocks the Regal King skin
 
 
 class MapStateResponse(BaseModel):
     nodes: list[MapNodeSummary]
     solved_count: int
-    unlocked_hydra_skin: bool
+    unlocked_regal_skin: bool
 
 
 class MapStartRequest(BaseModel):
@@ -39,4 +39,4 @@ class MapMoveResponse(BaseModel):
     puzzle_solved: bool
     game: CustomGameState
     solved_count: int
-    unlocked_hydra_skin: bool
+    unlocked_regal_skin: bool

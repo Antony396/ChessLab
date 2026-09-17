@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "game-ui-design": {
+      "source": "omer-metin/skills-for-antigravity",
+      "sourceType": "github",
+      "skillPath": "skills/game-ui-design/SKILL.md",
+      "computedHash": "cff8acaf58f3f4255f76fb962775fb1a2fec1fce49a54a50bde2c1efd5eb33ec"
+    },
     "neon": {
       "source": "neondatabase/agent-skills",
       "sourceType": "github",

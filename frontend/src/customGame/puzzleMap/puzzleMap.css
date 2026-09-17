@@ -38,7 +38,7 @@
 .puzzle-map-back-btn {
   margin-top: 4px;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid var(--hc-border-strong);
@@ -59,7 +59,7 @@
 .puzzle-map-node-label {
   font-weight: 600;
   color: var(--hc-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .puzzle-map-toolbar button {
@@ -145,8 +145,8 @@
   transform: translate(-50%, -50%);
   width: 6.4cqw;
   height: 6.4cqw;
-  min-width: 20px;
-  min-height: 20px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 50%;
   border: 0.4cqw solid var(--hc-border-strong);
   background: rgba(20, 22, 28, 0.75);
@@ -179,8 +179,8 @@
 .puzzle-map-node.finale {
   width: 9cqw;
   height: 9cqw;
-  min-width: 30px;
-  min-height: 30px;
+  min-width: 48px;
+  min-height: 48px;
   border-color: var(--hc-gold);
   box-shadow: 0 0 14px rgba(230, 190, 90, 0.6);
 }

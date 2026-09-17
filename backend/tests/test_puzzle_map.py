@@ -1,7 +1,7 @@
 """Puzzle Map: the 50-node progression that replaced Puzzle Rush - node 1 is
 always unlocked, each later node unlocks only once the one before it is
 solved, and solving node 50 (the hand-authored Hydra mate) flips
-unlocked_hydra_skin. See puzzle_map/store.py for what each node actually is
+unlocked_regal_skin. See puzzle_map/store.py for what each node actually is
 and daily_puzzle_routes.py's _build_puzzle_game for the shared position
 builder this reuses.
 """
@@ -32,7 +32,7 @@ def test_initial_state_has_only_node_one_unlocked(client):
     body = resp.json()
     assert len(body["nodes"]) == map_store.MAP_LENGTH
     assert body["solved_count"] == 0
-    assert body["unlocked_hydra_skin"] is False
+    assert body["unlocked_regal_skin"] is False
     assert body["nodes"][0]["unlocked"] is True
     assert body["nodes"][1]["unlocked"] is False
     assert body["nodes"][-1]["is_finale"] is True
@@ -89,7 +89,7 @@ def test_wrong_move_does_not_advance_or_unlock(client):
     assert state["nodes"][1]["unlocked"] is False
 
 
-def test_solving_the_finale_hydra_node_unlocks_the_skin(client):
+def test_solving_the_finale_hydra_node_unlocks_the_regal_skin(client):
     token = _register(client, "mapFinale")
     from app import db
 
@@ -111,7 +111,7 @@ def test_solving_the_finale_hydra_node_unlocks_the_skin(client):
     assert body["correct"] is True
     assert body["puzzle_solved"] is True
     assert body["game"]["status"] == "checkmate"
-    assert body["unlocked_hydra_skin"] is True
+    assert body["unlocked_regal_skin"] is True
 
 
 def test_node_forty_underpromotion_puzzle_solves_cleanly(client):

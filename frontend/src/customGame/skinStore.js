@@ -35,9 +35,14 @@ import { postEquippedSkin } from "./social/api";
 //
 // requiresMapProgress (optional): a Puzzle Map progress-gated skin - the
 // backend tracks each account's solved node count out of MAP_LENGTH (see
-// app/puzzle_map/store.py / db.py's map_puzzle_progress table). The Hydra
-// skin below is the first (and so far only) one gated this way: reaching
-// node 50 - the map's hand-authored Hydra finale - unlocks it.
+// app/puzzle_map/store.py / db.py's map_puzzle_progress table). The Regal
+// King skin below is gated this way: reaching node 50 - the classic map's
+// finale - unlocks it.
+//
+// requiresHeroMapProgress (optional): same idea, but for the newer Hero
+// Puzzle Map (see app/hero_puzzle_map/store.py / db.py's
+// hero_map_puzzle_progress table) - a separate hand-authored route built
+// around the custom hero pieces. The Hydra skin below is gated this way.
 export const KING_SKINS = {
   classic: {
     name: "Classic King",
@@ -79,6 +84,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/regal-king.png",
     whiteTeamSrc: "/pieces/avatars/regal-king.png",
     headSrc: "/pieces/avatars/regal-king-head.png",
+    requiresMapProgress: 50,
   },
   sovereign: {
     name: "Sovereign King",
@@ -94,7 +100,7 @@ export const KING_SKINS = {
     src: "/pieces/avatars/hydra-king.png",
     whiteTeamSrc: "/pieces/avatars/hydra-king-white.png",
     headSrc: "/pieces/avatars/hydra-king-head.png",
-    requiresMapProgress: 50,
+    requiresHeroMapProgress: 50,
   },
   // cost: a Shop skin (see ShopPanel.jsx) - locked until purchased with
   // currency, tracked server-side in owned_skins (unlike every other gate
@@ -137,12 +143,19 @@ export const KING_SKINS = {
     headSrc: "/pieces/avatars/bronze-king-head.png",
     cost: 200,
   },
+  // requiresLevel (optional, shop skins only): needs both the currency
+  // AND this player level (see PlayerStatsBadge's own level readout) to
+  // buy - checked alongside `cost` in isSkinUnlocked/ShopPanel.jsx, same
+  // "locks by default if progress isn't known yet" rule as
+  // requiresMapProgress above. The two "Ascendant" skins are the natural
+  // fit for this - the name already implies levelling up to reach them.
   silverAscendant: {
     name: "Silver Ascendant",
     src: "/pieces/avatars/silver-ascendant.png",
     whiteTeamSrc: "/pieces/avatars/silver-ascendant-white.png",
     headSrc: "/pieces/avatars/silver-ascendant-head.png",
     cost: 250,
+    requiresLevel: 5,
   },
   goldenAscendant: {
     name: "Golden Ascendant",
@@ -150,6 +163,7 @@ export const KING_SKINS = {
     whiteTeamSrc: "/pieces/avatars/golden-ascendant-white.png",
     headSrc: "/pieces/avatars/golden-ascendant-head.png",
     cost: 300,
+    requiresLevel: 10,
   },
   // Dark charcoal armor under a green cape/gem accents, so - like Dark
   // Knight/Hydra - whiteTeamSrc is a separate recolor (charcoal plate ->
@@ -191,9 +205,11 @@ export function getEquippedSkin() {
 export function isSkinUnlocked(key, progress = {}) {
   const skin = KING_SKINS[key];
   if (!skin) return false;
-  const { streak = 0, mapSolved = 0, ownedSkins = [] } = progress;
+  const { streak = 0, mapSolved = 0, heroMapSolved = 0, level = 0, ownedSkins = [] } = progress;
   if (skin.requiresStreak && streak < skin.requiresStreak) return false;
   if (skin.requiresMapProgress && mapSolved < skin.requiresMapProgress) return false;
+  if (skin.requiresHeroMapProgress && heroMapSolved < skin.requiresHeroMapProgress) return false;
+  if (skin.requiresLevel && level < skin.requiresLevel) return false;
   if (skin.cost && !ownedSkins.includes(key)) return false;
   return true;
 }

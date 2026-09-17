@@ -5,8 +5,10 @@ easiest 49 puzzles in the set; node 50 is a hand-authored Hydra mate,
 verified the same rigorous way as the Daily Puzzle's own hero puzzles (see
 this session's scratchpad verify_puzzle.py - "HYDRA PUZZLE draft 5", the
 final clean version: King a8/Hydra a4/inert Knight c6 vs King c8/pawn
-a7/Knight b7, unique mate a4-a6). Solving node 50 is what unlocks the Hydra
-King skin (see frontend's skinStore.js's requiresMapProgress).
+a7/Knight b7, unique mate a4-a6). Solving node 50 is what unlocks the Regal
+King skin (see frontend's skinStore.js's requiresMapProgress) - the Hydra
+King skin moved to the newer Hero Puzzle Map instead (see
+app/hero_puzzle_map/store.py).
 
 Each node's definition is shaped exactly like DailyPuzzleCreateRequest's
 custom_position + solution (daily_puzzle/models.py), so building its

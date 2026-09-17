@@ -45,14 +45,14 @@
 }
 
 .daily-puzzle-longest {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
 .daily-puzzle-back-btn {
   margin-top: 4px;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid var(--hc-border-strong);
@@ -73,7 +73,7 @@
 .daily-puzzle-date {
   font-weight: 600;
   color: var(--hc-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .daily-puzzle-streak-badge {

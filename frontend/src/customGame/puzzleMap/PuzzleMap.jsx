@@ -33,7 +33,7 @@ export default function PuzzleMap({ token, onExit }) {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalDestinations, setLegalDestinations] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [justUnlockedHydra, setJustUnlockedHydra] = useState(false);
+  const [justUnlockedRegal, setJustUnlockedRegal] = useState(false);
 
   function loadMapState() {
     setPhase("loading-map");
@@ -52,7 +52,7 @@ export default function PuzzleMap({ token, onExit }) {
 
   function openNode(index) {
     setPhase("loading-puzzle");
-    setJustUnlockedHydra(false);
+    setJustUnlockedRegal(false);
     startMapPuzzle(token, index)
       .then((result) => {
         setPuzzle(result);
@@ -156,7 +156,7 @@ export default function PuzzleMap({ token, onExit }) {
           window.setTimeout(() => setFlash(null), CORRECT_FLASH_MS);
           if (result.puzzle_solved) {
             playCaptureSound();
-            setJustUnlockedHydra(result.unlocked_hydra_skin);
+            setJustUnlockedRegal(result.unlocked_regal_skin);
             setPhase("solved");
           }
         } else {
@@ -205,10 +205,10 @@ export default function PuzzleMap({ token, onExit }) {
           <p>
             Node {puzzle.index} of {mapState.nodes.length} complete.
           </p>
-          {justUnlockedHydra && (
+          {justUnlockedRegal && (
             <div className="puzzle-map-unlock-banner">
-              <img src={KING_SKINS.hydra.src} alt="" className="puzzle-map-unlock-img" />
-              <p>Hydra King skin unlocked!</p>
+              <img src={KING_SKINS.regal.src} alt="" className="puzzle-map-unlock-img" />
+              <p>Regal King skin unlocked!</p>
             </div>
           )}
           <button type="button" className="puzzle-map-back-btn" onClick={loadMapState}>
@@ -280,10 +280,10 @@ export default function PuzzleMap({ token, onExit }) {
               style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
               disabled={!node.unlocked}
               onClick={() => openNode(node.index)}
-              title={node.is_finale ? "Node 50 - unlocks the Hydra King skin" : `Puzzle ${node.index}`}
+              title={node.is_finale ? "Node 50 - unlocks the Regal King skin" : `Puzzle ${node.index}`}
             >
               {node.is_finale ? (
-                <img src={KING_SKINS.hydra.src} alt="" className="puzzle-map-finale-img" />
+                <img src={KING_SKINS.regal.src} alt="" className="puzzle-map-finale-img" />
               ) : (
                 <span className="puzzle-map-node-number">{node.index}</span>
               )}

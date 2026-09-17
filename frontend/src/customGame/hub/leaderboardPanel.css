@@ -9,14 +9,14 @@
 
 .leaderboard-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
 .leaderboard-loading,
 .leaderboard-error {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
@@ -38,7 +38,7 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text-h);
 }
 
@@ -103,7 +103,14 @@
 .leaderboard-crown,
 .leaderboard-top-ten-badge {
   flex: none;
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.leaderboard-crown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hc-gold);
 }
 
 .leaderboard-top-ten-badge {

@@ -22,7 +22,16 @@
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  padding: 12px 16px 4px;
+  /* Side padding widened from 16px so the room keeps a bit of breathing
+     room from the fixed side panels rather than crowding them at
+     moderate viewport widths. Not a full fix for "consistent margins at
+     every resolution" - the panels are fixed to the raw viewport edge
+     while this wraps a room centered independently within #root's own
+     1126px column, two different coordinate systems that can still drift
+     closer together at narrow widths. Reconciling that fully means giving
+     them one shared coordinate system, which is a bigger layout change
+     than this polish pass. */
+  padding: 12px 32px 4px;
   box-sizing: border-box;
 }
 
@@ -41,7 +50,20 @@
   background-position: center;
   background-repeat: no-repeat;
   box-shadow: 0 30px 70px -25px rgba(0, 0, 0, 0.75);
+  /* A second, softer ambient shadow layered outside the tight box-shadow
+     above - reads as the room casting light onto the page behind it
+     rather than just having a hard-edged drop shadow, which is what was
+     making it look pasted on rather than sitting in the scene. */
+  filter: drop-shadow(0px 25px 35px rgba(0, 0, 0, 0.9));
   margin: 0 auto;
+  /* Dissolve the room's own rectangular edge into the page instead of
+     ending in a hard, sticker-like border. Sized with farthest-side so
+     the ellipse stays tangent to the box's side midpoints (where the
+     painted oval room itself reaches closest to the edge) and only eats
+     into the four corners, which are already the art's own dark, empty
+     margin. */
+  mask-image: radial-gradient(ellipse farthest-side at center, #000 88%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse farthest-side at center, #000 88%, transparent 100%);
 }
 
 /* Everything tile-positioned (floor buttons, props, avatar) lives in here,
@@ -189,7 +211,7 @@
   border-radius: 999px;
   background: rgba(245, 197, 66, 0.9);
   color: #1a1a1a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -209,7 +231,7 @@
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.6);
   color: var(--hc-text-h);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -279,7 +301,7 @@
   border: 1px solid var(--hc-gold);
   background: rgba(245, 197, 66, 0.1);
   color: var(--hc-text-h);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .hub-visiting-banner strong {
@@ -288,7 +310,7 @@
 
 .hub-visiting-banner button {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   padding: 5px 12px;
   border: none;
@@ -384,7 +406,7 @@
   background: rgba(0, 0, 0, 0.7);
   border: 1px solid var(--hc-gold);
   color: var(--hc-gold);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
   letter-spacing: 0.3px;
@@ -402,6 +424,14 @@
   overflow: visible;
 }
 
+/* Door triggers (dorm<->Commons<->Shop) get no icon at all - the room's
+   own painted archway already reads as "the door", so a floating icon
+   glyph on top of it was a redundant "door on the door". Just the
+   proximity glow + prompt remain. */
+.hub-trigger-door .hub-trigger-icon {
+  display: none;
+}
+
 .hub-trigger-pedestal .hub-trigger-icon,
 .hub-trigger-puzzle-pedestal .hub-trigger-icon,
 .hub-trigger-leaderboard .hub-trigger-icon {
@@ -416,6 +446,42 @@
 .hub-trigger-puzzle-pedestal.near .hub-trigger-icon,
 .hub-trigger-leaderboard.near .hub-trigger-icon {
   transform: none;
+}
+
+/* Ground contact shadow, same treatment as .hub-avatar-shadow (a small
+   blurred rgba(0,0,0,0.45) ellipse at the base) - the pedestals/
+   leaderboard already had a directional drop-shadow on their own prop
+   images (see .pedestal-prop-img etc. below), but nothing sitting flat
+   under them the way the avatar has, so they read as floating relative to
+   it. Pseudo-elements rather than new JSX nodes - purely decorative,
+   nothing here needs to be a real element. */
+.pedestal-prop::after,
+.puzzle-pedestal-prop::after,
+.leaderboard-prop::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  filter: blur(2px);
+  z-index: -1;
+}
+
+.pedestal-prop::after {
+  width: 46px;
+  height: 14px;
+}
+
+.puzzle-pedestal-prop::after {
+  width: 40px;
+  height: 12px;
+}
+
+.leaderboard-prop::after {
+  width: 48px;
+  height: 14px;
 }
 
 .pedestal-prop {
@@ -532,11 +598,15 @@
   margin: 10px auto 0;
   display: block;
   font: inherit;
-  font-size: 13px;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid var(--hc-border);
-  background: var(--hc-surface);
+  /* Darker + gold-tinted border instead of the generic --hc-surface/
+     --hc-border tokens, so this reads as part of the same navy/gold scene
+     rather than a plain generic input dropped on top of it. */
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: rgba(10, 15, 25, 0.8);
   color: var(--hc-text-h);
   text-align: center;
 }
@@ -551,10 +621,18 @@
   background: var(--hc-surface-strong);
 }
 
+.hub-chat-input:focus-visible {
+  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.5);
+}
+
 .hub-hint {
   text-align: center;
-  font-size: 12px;
-  color: var(--hc-text);
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  /* Brighter than --hc-text (#93a0b4) specifically for legibility against
+     the dark room/page background - a plain var() swap would affect every
+     other use of that token, so this is a deliberate one-off override. */
+  color: #b0b8c8;
   max-width: 460px;
   line-height: 1.6;
   margin: 0;
@@ -566,23 +644,72 @@
 
 /* --- Side panel: profile picture, skin picker, friends -------------- */
 
-/* Pinned to the actual browser viewport edge (not the room), so it reads
-   as a persistent part of the page itself rather than a control that
-   lives inside the hub room's own bounds. Rendered as a sibling of
-   .hub-room-wrap in HubWorld.jsx specifically so no transformed ancestor
-   turns this fixed positioning back into something relative. Everything
-   in it stacks via plain flex gap now, rather than each child guessing
-   the pixel offset of the one above it. */
+/* Real 9-slice (see frontend/public/hub/ui/sidebar-panel-9slice.png) - a
+   crest cap (top) + a genuinely flat, detail-free navy fill (middle) + a
+   plain closing trim (bottom), verified by sampling per-row pixel
+   variance before trusting it. border-image stretches that flat middle to
+   whatever height the content (badge + 5 buttons) actually needs, natively
+   - no manual pixel-height math.
+   IMPORTANT: this source file is pre-cropped to its own real content
+   bounds (800x1454) - the original ChatGPT export had ~110-130px of
+   fully-transparent margin baked around the actual art on every side
+   (canvas 1024x1536, content only 111-911 x 33-1487). That margin was
+   invisible here since this panel just floats with room to spare around
+   it, but the exact same file, used uncropped for .hub-frame-left/right
+   below, produced a visible gap between the pillar and the room edge it
+   was supposed to flush against - confirmed via a screenshot, not
+   assumed. Always check a generated asset's real alpha bounds before
+   treating its canvas size as its content size. Slice values (225 crest /
+   44 trim / 60-61 rail) are pixels in this cropped file, not the original
+   export - re-derive them again if this file is ever replaced.
+   .left and .right now use two DIFFERENT source images (deliberately, per
+   request) - the shared base rule below only holds the layout that's
+   identical either way (position/size/flex); each side's own border-image-*
+   trio lives in its own .left/.right rule beneath it. */
 .hub-side-panel {
   position: fixed;
-  top: 100px;
-  left: 18px;
+  top: 40px;
   z-index: 10;
-  width: 128px;
+  width: 220px;
+  height: calc(100vh - 60px);
+  box-sizing: border-box;
+  border-style: solid;
+  /* Soft inner vignette so the flat stretched-middle section of the
+     border-image reads as a recessed panel instead of a flat pasted
+     sticker - painted inside the border edge, over the content area. */
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  padding: 10px 6px;
+}
+
+.hub-side-panel.left {
+  left: 18px;
+  border-width: 62px 17px 12px;
+  border-image-source: url("/hub/ui/sidebar-panel-9slice.png");
+  border-image-slice: 225 61 44 60 fill;
+  border-image-repeat: stretch;
+}
+
+/* image2.png (the room-frame top bar's own source) rotated 90deg so its
+   verified-flat stretch zone runs vertically instead of horizontally -
+   same technique as the pillar, different source. Re-profiled the ROTATED
+   file's own row variance rather than transforming the pre-rotation
+   left/right cap numbers by hand (rotation direction makes that easy to
+   get backwards) - top cap ~80px, bottom cap ~56px, flat middle the
+   ~1220px between them, out of the rotated file's own 777x1356. */
+.hub-side-panel.right {
+  right: 18px;
+  border-width: 23px 7px 16px 6px;
+  border-image-source: url("/hub/ui/right-panel-9slice.png");
+  border-image-slice: 80 25 56 20 fill;
+  border-image-repeat: stretch;
+}
+
+.hub-side-panel.right {
+  right: 18px;
 }
 
 .hub-profile-badge-wrap {
@@ -604,26 +731,6 @@
   box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.65);
 }
 
-.hub-profile-level-pill {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 2px solid #14161c;
-  background: var(--hc-gold);
-  color: #14161c;
-  font-family: "Rajdhani", sans-serif;
-  font-weight: 700;
-  font-size: 12px;
-  line-height: 1;
-}
-
 /* headSrc (see skinStore.js) is already a pre-cropped, pre-centered square
    image of just the skin's head, so a plain cover fit is all that's
    needed here - no per-skin zoom guessing. */
@@ -640,9 +747,13 @@
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
   color: var(--hc-text-h);
-  font-family: "Rajdhani", sans-serif;
+  /* Inter, not Cinzel - this renders an actual player-provided username,
+     so legibility wins over decorative consistency with the button labels
+     around it (a real name shouldn't be run through a display serif that
+     can distort unusual characters). */
+  font-family: "Inter", sans-serif;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.4px;
   white-space: nowrap;
   overflow: hidden;
@@ -653,30 +764,194 @@
 
 .hub-skin-picker {
   position: relative;
-  width: 128px;
+  width: 100%;
   display: flex;
   justify-content: center;
 }
 
+/* MedievalSharp, trialled in place of Cinzel here (see index.html's font
+   comment) - a visual match for the font specimen image dropped into
+   frontend/public/hub/goodfonts.png, not an actual font file, so this is
+   a best-guess identification rather than an exact match. Gold instead of
+   --hc-text-h per request, to read as the panel's own embedded lettering
+   rather than plain UI text. Shared across all 5 side-panel buttons +
+   "Friends" (doubling as that panel's title) so they read as one set. */
 .hub-skin-toggle,
-.hub-friends-toggle {
+.hub-shop-toggle,
+.hub-battlepass-toggle,
+.hub-friends-toggle,
+.hub-play-toggle,
+.hub-play-subitem,
+.hub-logout-btn {
+  font-family: "MedievalSharp", cursive;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--hc-gold);
+  text-shadow: 0px 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.hub-skin-toggle,
+.hub-friends-toggle,
+.hub-play-toggle {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 6px 12px 6px 6px;
   border-radius: 999px;
   border: 1px solid var(--hc-border-strong);
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
-  color: var(--hc-text-h);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .hub-skin-toggle:hover,
-.hub-friends-toggle:hover {
+.hub-friends-toggle:hover,
+.hub-play-toggle:hover {
   border-color: var(--hc-gold);
+}
+
+.hub-play-section {
+  width: 100%;
+}
+
+/* "Play" is now a group (Puzzles/Online/Computer) rather than a single
+   destination - the toggle keeps its old pill look, but its corners
+   square off on the bottom edge while expanded so the submenu underneath
+   reads as attached to it instead of a separate floating card. */
+.hub-play-toggle {
+  position: relative;
+}
+
+.hub-play-toggle[aria-expanded="true"] {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.hub-play-chevron {
+  display: flex;
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+
+.hub-play-chevron.open {
+  transform: rotate(180deg);
+}
+
+.hub-play-submenu {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--hc-border-strong);
+  border-top: none;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  margin-top: -6px;
+  padding-top: 6px;
+}
+
+.hub-play-subitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px 8px 26px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hub-play-subitem:hover {
+  background: rgba(245, 197, 66, 0.1);
+  color: var(--hc-gold-strong);
+}
+
+/* Level (+progress) + currency readout, right sidebar (see
+   PlayerStatsBadge in HubWorld.jsx) - styled as one pill split in two
+   rather than matching the button rows around it, since it's a readout,
+   not an action. */
+.hub-player-stats {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--hc-border-strong);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  font-family: "MedievalSharp", cursive;
+  letter-spacing: 1px;
+  color: var(--hc-gold);
+  text-shadow: 0px 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.hub-stat-level,
+.hub-stat-currency {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.hub-stat-level {
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid var(--hc-border-strong);
+}
+
+.hub-stat-level-label {
+  line-height: 1;
+}
+
+.hub-stat-level-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.hub-stat-level-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--hc-gold-dark), var(--hc-gold-strong));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* A solid-gold silhouette cut from the actual pawn art (see GoldPawnIcon
+   in HubWorld.jsx, which sets the mask-image URL inline) rather than a
+   plain currentColor SVG - the pawn shape only reads clearly as "a pawn"
+   (not an abstract icon) at this size using the game's own piece art as
+   the mask source. */
+.hub-gold-pawn-icon {
+  display: inline-block;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  background-color: var(--hc-gold);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
 }
 
 .hub-skin-toggle-img {
@@ -686,14 +961,14 @@
 }
 
 .hub-logout-btn {
+  width: 100%;
+  box-sizing: border-box;
   padding: 6px 14px;
   border-radius: 999px;
   border: 1px solid var(--hc-border-strong);
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
-  color: var(--hc-text);
-  font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -728,7 +1003,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--hc-text-h);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   text-align: left;
@@ -776,18 +1051,18 @@
 
 .hub-overlay-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 6px;
+  right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid var(--hc-border-strong);
   background: rgba(255, 255, 255, 0.05);
   color: var(--hc-text-h);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
@@ -801,7 +1076,7 @@
   position: absolute;
   top: 14px;
   left: 20px;
-  font-family: "Rajdhani", sans-serif;
+  font-family: "Cinzel", serif;
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 1px;
@@ -814,7 +1089,7 @@
 .skins-panel-hint {
   margin: 0 0 16px;
   color: var(--hc-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .skins-grid {
@@ -867,12 +1142,12 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid var(--hc-border-strong);
   color: var(--hc-text-h);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2px;
 }
@@ -881,11 +1156,11 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: var(--hc-gold);
   color: #14161c;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -908,7 +1183,7 @@
 
 .skin-card-name {
   color: var(--hc-text-h);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   text-align: center;
 }
@@ -926,7 +1201,7 @@
 .shop-panel-hint {
   margin: 0;
   color: var(--hc-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .shop-currency-badge {
@@ -937,7 +1212,7 @@
   background: rgba(212, 175, 55, 0.1);
   color: var(--hc-gold);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
@@ -948,7 +1223,7 @@
   border: 1px solid var(--hc-danger);
   background: rgba(200, 60, 60, 0.12);
   color: var(--hc-danger);
-  font-size: 12.5px;
+  font-size: 14px;
 }
 
 .shop-card {
@@ -962,7 +1237,7 @@
   border: 1px solid var(--hc-border-strong);
   background: rgba(255, 255, 255, 0.05);
   color: var(--hc-text-h);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1035,7 +1310,7 @@
 }
 
 .bp-xp-label {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
@@ -1070,12 +1345,12 @@
 .bp-node-level {
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text-h);
 }
 
 .bp-node-reward {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-gold);
 }
 
@@ -1085,7 +1360,7 @@
   border: 1px solid var(--hc-gold);
   background: rgba(212, 175, 55, 0.15);
   color: var(--hc-gold);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1095,7 +1370,7 @@
 }
 
 .bp-node-status {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
@@ -1117,8 +1392,7 @@
   border: 1px solid var(--hc-border-strong);
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
-  color: var(--hc-text-h);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -1128,40 +1402,121 @@
   border-color: var(--hc-gold);
 }
 
+/* The puzzle-choice panel's title banner pokes up above its own box
+   (.puzzle-choice-header below, top: -13%), which the shared
+   .hub-overlay-backdrop's top-anchored layout (align-items: flex-start,
+   32px padding) doesn't leave room for - it was getting clipped by the
+   top of the page since content positioned above a scroll container's
+   own origin isn't reachable by scrolling. Centering just this instance
+   vertically gives the header room to breathe above the panel. */
+.hub-overlay-backdrop:has(.puzzle-choice-panel) {
+  align-items: center;
+}
+
+/* The puzzle-choice screen gets its own hand-painted frame (see
+   frontend/public/hub/ui/, cut from the menu.png sheet) instead of the
+   generic dark hub-overlay-panel chrome every other station uses -
+   :has() lets this override just that one instance's background/title/close
+   without touching the shared rule everything else still relies on (same
+   pattern as .app:has(.hero-chess-app) in customGame.css). */
+.hub-overlay-panel:has(.puzzle-choice-panel) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  width: 640px;
+  max-width: 92vw;
+  aspect-ratio: 890 / 621;
+  background-image: url("/hub/ui/puzzle-menu-panel.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
+.hub-overlay-panel:has(.puzzle-choice-panel) .hub-overlay-title {
+  display: none;
+}
+
+.hub-overlay-panel:has(.puzzle-choice-panel) .hub-overlay-close {
+  /* Pulled further out from the panel's own top-right corner bracket
+     (was -16px/-16px) - the two gold ornaments were sitting close enough
+     to visually merge into one shape, making it look like the clickable
+     area extended into the panel's own corner art when it didn't. */
+  top: -24px;
+  right: -24px;
+  width: 56px;
+  height: 56px;
+  background: url("/hub/ui/menu-close-button.png") center / contain no-repeat;
+  border: none;
+  border-radius: 0;
+  font-size: 0; /* the art already has its own X glyph baked in */
+}
+
 .puzzle-choice-panel {
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  justify-content: center;
+  gap: 6%;
+  padding: 15% 8% 8%;
+}
+
+.puzzle-choice-header {
+  position: absolute;
+  top: -13%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 62%;
+  aspect-ratio: 803 / 267;
+  background: url("/hub/ui/puzzle-menu-title-banner.png") center / contain no-repeat;
+  pointer-events: none;
 }
 
 .puzzle-choice-card {
+  position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 4px;
-  text-align: left;
-  padding: 16px;
-  border-radius: var(--hc-radius-sm);
-  border: 1px solid var(--hc-border-strong);
-  background: rgba(255, 255, 255, 0.03);
+  width: 100%;
+  aspect-ratio: 586 / 194;
+  padding: 0 6% 0 32%;
+  border: none;
+  background-color: transparent;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  text-align: left;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.puzzle-choice-card.map {
+  background-image: url("/hub/ui/puzzle-menu-option-rook.png");
+}
+
+.puzzle-choice-card.hero {
+  background-image: url("/hub/ui/puzzle-menu-option-knight.png");
 }
 
 .puzzle-choice-card:hover {
-  border-color: var(--hc-gold);
-  background: rgba(255, 255, 255, 0.06);
-  transform: translateY(-2px);
+  transform: scale(1.02);
+  filter: brightness(1.18);
 }
 
 .puzzle-choice-name {
-  color: var(--hc-text-h);
+  color: var(--hc-gold-strong);
+  font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 17px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
 
 .puzzle-choice-desc {
-  color: var(--hc-text);
-  font-size: 12px;
+  color: var(--hc-text-h);
+  font-size: 14px;
+  line-height: 1.3;
 }
 
 .challenge-prompt-backdrop {

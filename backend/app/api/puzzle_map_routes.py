@@ -54,7 +54,7 @@ def get_map_state(user_id: str = Depends(get_current_user_id)):
     return MapStateResponse(
         nodes=nodes,
         solved_count=len(solved),
-        unlocked_hydra_skin=map_store.MAP_LENGTH in solved,
+        unlocked_regal_skin=map_store.MAP_LENGTH in solved,
     )
 
 
@@ -97,7 +97,7 @@ def submit_map_move(payload: MapMoveRequest, user_id: str = Depends(get_current_
             puzzle_solved=False,
             game=_to_state(attempt.game),
             solved_count=len(solved),
-            unlocked_hydra_skin=map_store.MAP_LENGTH in solved,
+            unlocked_regal_skin=map_store.MAP_LENGTH in solved,
         )
 
     try:
@@ -159,5 +159,5 @@ def submit_map_move(payload: MapMoveRequest, user_id: str = Depends(get_current_
         puzzle_solved=puzzle_solved,
         game=_to_state(attempt.game),
         solved_count=len(solved),
-        unlocked_hydra_skin=map_store.MAP_LENGTH in solved,
+        unlocked_regal_skin=map_store.MAP_LENGTH in solved,
     )

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { KING_SKINS, useEquippedSkin, setEquippedSkin, isSkinUnlocked } from "../skinStore";
 import { fetchMyStreak } from "../dailyPuzzle/api";
 import { fetchMapState } from "../puzzleMap/api";
-import { fetchShopState } from "../social/api";
+import { fetchHeroMapState } from "../heroPuzzleMap/api";
+import { fetchShopState, fetchMe } from "../social/api";
 
 // A proper browsing surface for King skins - shown inside the hub's shared
 // station-overlay chrome (see HeroChessApp.jsx), replacing the old cramped
@@ -12,11 +13,14 @@ import { fetchShopState } from "../social/api";
 // the gallery open for a further look.
 export default function SkinsPanel({ token }) {
   const equipped = useEquippedSkin();
-  // Feeds isSkinUnlocked's two gating mechanisms (see skinStore.js) -
-  // requiresStreak (Daily Puzzle) and requiresMapProgress (Puzzle Map).
-  // Defaults to 0/0 (everything gated stays locked) until each loads.
+  // Feeds isSkinUnlocked's gating mechanisms (see skinStore.js) -
+  // requiresStreak (Daily Puzzle), requiresMapProgress (Puzzle Map),
+  // requiresHeroMapProgress (Hero Puzzle Map), and requiresLevel. Defaults
+  // to 0/0 (everything gated stays locked) until each loads.
   const [streak, setStreak] = useState(0);
   const [mapSolved, setMapSolved] = useState(0);
+  const [heroMapSolved, setHeroMapSolved] = useState(0);
+  const [level, setLevel] = useState(0);
   const [ownedSkins, setOwnedSkins] = useState([]);
 
   useEffect(() => {
@@ -36,6 +40,13 @@ export default function SkinsPanel({ token }) {
       .catch(() => {
         // Not fatal - same reasoning as above, for requiresMapProgress.
       });
+    fetchHeroMapState(token)
+      .then((result) => {
+        if (!cancelled) setHeroMapSolved(result.solved_count);
+      })
+      .catch(() => {
+        // Not fatal - same reasoning as above, for requiresHeroMapProgress.
+      });
     fetchShopState(token)
       .then((result) => {
         if (!cancelled) setOwnedSkins(result.owned_skins);
@@ -43,12 +54,19 @@ export default function SkinsPanel({ token }) {
       .catch(() => {
         // Not fatal - same reasoning as above, for cost-gated skins.
       });
+    fetchMe(token)
+      .then((me) => {
+        if (!cancelled) setLevel(me.level);
+      })
+      .catch(() => {
+        // Not fatal - same reasoning as above, for requiresLevel.
+      });
     return () => {
       cancelled = true;
     };
   }, [token]);
 
-  const progress = { streak, mapSolved, ownedSkins };
+  const progress = { streak, mapSolved, heroMapSolved, level, ownedSkins };
 
   return (
     <div className="skins-panel">
@@ -59,9 +77,13 @@ export default function SkinsPanel({ token }) {
           const unlocked = isSkinUnlocked(key, progress);
           const lockHint = skin.requiresMapProgress
             ? `Solve ${skin.requiresMapProgress} Puzzle Map nodes to unlock ${skin.name} (${mapSolved}/${skin.requiresMapProgress} so far)`
-            : skin.requiresStreak
-              ? `Solve the Daily Puzzle ${skin.requiresStreak} days in a row to unlock ${skin.name} (${streak}/${skin.requiresStreak} so far)`
-              : `Buy ${skin.name} in the Shop for ${skin.cost} currency`;
+            : skin.requiresHeroMapProgress
+              ? `Solve ${skin.requiresHeroMapProgress} Hero Puzzle Map nodes to unlock ${skin.name} (${heroMapSolved}/${skin.requiresHeroMapProgress} so far)`
+              : skin.requiresStreak
+                ? `Solve the Daily Puzzle ${skin.requiresStreak} days in a row to unlock ${skin.name} (${streak}/${skin.requiresStreak} so far)`
+                : skin.requiresLevel && level < skin.requiresLevel
+                  ? `Reach Level ${skin.requiresLevel} to buy ${skin.name} in the Shop (currently Level ${level})`
+                  : `Buy ${skin.name} in the Shop for ${skin.cost} currency`;
           return (
             <button
               key={key}
@@ -77,9 +99,13 @@ export default function SkinsPanel({ token }) {
                   🔒{" "}
                   {skin.requiresMapProgress
                     ? `${mapSolved}/${skin.requiresMapProgress}`
-                    : skin.requiresStreak
-                      ? `${streak}/${skin.requiresStreak}`
-                      : `${skin.cost}`}
+                    : skin.requiresHeroMapProgress
+                      ? `${heroMapSolved}/${skin.requiresHeroMapProgress}`
+                      : skin.requiresStreak
+                        ? `${streak}/${skin.requiresStreak}`
+                        : skin.requiresLevel && level < skin.requiresLevel
+                          ? `Lv ${level}/${skin.requiresLevel}`
+                          : `${skin.cost}`}
                 </span>
               )}
               <span className="skin-card-preview">

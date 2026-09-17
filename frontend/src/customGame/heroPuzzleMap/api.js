@@ -1,0 +1,55 @@
+import { clearAuth } from "../social/authStore";
+
+const API_ROOT = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE = `${API_ROOT}/api`;
+
+async function handle(res) {
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      // not JSON, keep statusText
+    }
+    if (res.status === 401) clearAuth();
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function fetchHeroMapState(token) {
+  return fetch(`${API_BASE}/hero-puzzle-map/state`, { headers: authHeaders(token) }).then(handle);
+}
+
+export function startHeroMapPuzzle(token, index) {
+  return fetch(`${API_BASE}/hero-puzzle-map/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ index }),
+  }).then(handle);
+}
+
+export function postHeroMapPuzzleMove(token, payload) {
+  return fetch(`${API_BASE}/hero-puzzle-map/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(payload),
+  }).then(handle);
+}
+
+// For authoring a node's puzzle - see backend/app/api/hero_puzzle_map_routes.py.
+// `custom_position` is a { fen, white_dragon_squares, ... } shape (see
+// daily_puzzle/models.py's DailyPuzzleCustomPosition), `solution` a list of
+// { from_square, to_square, shoot } steps.
+export function createHeroMapNode(token, payload) {
+  return fetch(`${API_BASE}/hero-puzzle-map/nodes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(payload),
+  }).then(handle);
+}

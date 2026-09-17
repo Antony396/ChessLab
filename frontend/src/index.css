@@ -54,6 +54,30 @@ body {
   margin: 0;
 }
 
+/* The true outer page canvas, beyond #root's own 1126px-capped column -
+   scoped to when the game is showing (not the separate light-themed
+   Analyzer tool) via :has(), same technique .app:has(.hero-chess-app)
+   already uses in customGame.css. Without this, the margin outside that
+   column fell back to the light-mode default (or OS dark-mode gray,
+   neither of which matches the game's own navy/gold theme), which is what
+   read as a flat, disconnected "pasted on a black/white page" background. */
+body:has(.hero-chess-app) {
+  width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+  /* Layered: a faint fractal-noise grain (tiled, so it reads as a slate/
+     stone texture rather than a flat color) sitting under a radial
+     vignette. The grain is what keeps every separately-sourced PNG prop
+     from looking like a sticker pasted on a smooth gradient - it gives
+     the whole page one shared surface texture to sit on top of. */
+  background-color: #030508;
+  background-image:
+    radial-gradient(ellipse 1400px 900px at 50% 35%, rgba(10, 16, 31, 0.45) 0%, #030508 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat;
+  background-size: cover, 180px 180px;
+}
+
 #root {
   width: 1126px;
   max-width: 100%;
@@ -64,6 +88,14 @@ body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+}
+
+/* The light-themed Analyzer template's column-divider hairlines read as
+   stray "page break" lines cutting through the hub scene - drop them
+   whenever the game is showing, same :has() scoping as the body
+   background above. */
+body:has(.hero-chess-app) #root {
+  border-inline: none;
 }
 
 h1,

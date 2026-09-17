@@ -3,6 +3,17 @@ import { fetchLeaderboard } from "../social/api";
 import { KING_SKINS } from "../skinStore";
 import "./leaderboardPanel.css";
 
+// Same crown glyph as the King's deck-slot badge (DeckBuilder.jsx's own
+// CrownIcon) - the emoji this replaced rendered as a different crown per
+// OS/browser and didn't match the game's own art anywhere else.
+function CrownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="none">
+      <path d="M4 18h16l1-9-5 3-4-6-4 6-5-3 1 9z" />
+    </svg>
+  );
+}
+
 // The Leaderboard station: top players by ELO (see backend's db.py -
 // apply_elo_result only ever moves it for a real online game between two
 // known accounts, never vs_ai/local-sandbox play). Rendered inside the same
@@ -61,7 +72,11 @@ export default function LeaderboardPanel({ token, myUserId }) {
                 className={`leaderboard-skin-img${isFirst ? " first" : ""}`}
               />
               <span className="leaderboard-username">{entry.username}</span>
-              {isFirst && <span className="leaderboard-crown" title="#1">👑</span>}
+              {isFirst && (
+                <span className="leaderboard-crown" title="#1">
+                  <CrownIcon />
+                </span>
+              )}
               {!isFirst && isTopTen && <span className="leaderboard-top-ten-badge" title="Top 10%">★</span>}
               <span className="leaderboard-elo">{entry.elo}</span>
             </li>

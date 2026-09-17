@@ -11,8 +11,9 @@
   --hc-gold: #f5c542;
   --hc-gold-strong: #ffd873;
   --hc-gold-dark: #e0a82e;
-  --hc-evo: #9d4edd;
-  --hc-evo-strong: #c084fc;
+  /* Warm orange, matching the Evo Slot's own glow color - not purple. */
+  --hc-evo: #d9720f;
+  --hc-evo-strong: #ff9d3d;
   --hc-cyan: #00e5ff;
   --hc-locked: #2a303c;
   --hc-danger: #ff4d4d;
@@ -154,14 +155,14 @@
 }
 
 .captured-piece-count {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--hc-text-h);
   margin: 0 8px 0 2px;
 }
 
 .captured-material-lead {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--hc-gold);
   margin-left: 6px;
@@ -183,7 +184,7 @@
   text-align: left;
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   line-height: 1.3;
@@ -236,7 +237,9 @@
   margin-top: 16px;
 }
 
-/* Primary hero button: gold gradient, dark bold text, scale+inset press. */
+/* Primary hero button: gold gradient, dark bold text, scale+inset press.
+   The button-bar-a/b.png border-image treatment was tried here but
+   didn't land - reverted to the plain gold gradient / outline pair. */
 .start-game-btn {
   display: block;
   margin: 0;
@@ -310,7 +313,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text);
   border: 1px solid var(--hc-border);
   border-radius: var(--hc-radius);
@@ -332,7 +335,7 @@
   padding: 36px 24px;
   margin: 24px auto;
   max-width: 440px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text-h);
   display: flex;
   flex-direction: column;
@@ -421,7 +424,7 @@
 
 .online-waiting-hint {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
@@ -438,7 +441,7 @@
   overflow-x: auto;
   white-space: nowrap;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--hc-border);
   border-radius: var(--hc-radius-sm);
@@ -460,7 +463,7 @@
 
 .action-log {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text-h);
   padding-left: 20px;
   max-height: 200px;
@@ -522,7 +525,7 @@
 }
 
 .hero-chess-app h2 {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;

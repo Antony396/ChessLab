@@ -1,30 +1,64 @@
+/* Deck-builder revamp (see frontend/public/hub/assetsfordeckbuilderrevamp.png,
+   cropped into frontend/public/hub/ui/deckbuilder/) - a real border-image
+   9-slice, same technique/verification approach as the hub sidebar: the
+   source's flat middle was confirmed via per-row/column pixel variance
+   before trusting it to stretch, so this panel can hold however much
+   content the deck builder ends up with (saved decks + budget bar +
+   board + a 6-column palette + buttons is a lot) without the corner
+   ornaments distorting. Width stays close to the original 700px
+   max-width; height is fully auto/content-driven.
+   Background swapped to image2.png (frontend/public/hub/image2.png,
+   chroma-keyed off its brown backdrop and cropped to its own content
+   bounds). The first crop left a few px of the brown backdrop baked into
+   every edge (a soft vignette blur around the source art, not a hard
+   edge, so the initial bounding-box detection wasn't tight enough) -
+   that thin off-color sliver then got stretched the full length of each
+   border and read as a "pasted sticker" outline. Re-cropped with a
+   generous safety margin (1296x705, cap sizes 95/68/55/72
+   top/right/bottom/left per the same variance check) to guarantee zero
+   background bleed. border-width below is those cap sizes scaled by the
+   panel's 700px render width against the source's own 1296px width
+   (~0.54), same scaling approach used for the original asset. */
 .deck-builder {
+  position: relative;
   max-width: 700px;
   margin: 0 auto;
+  box-sizing: border-box;
+  padding: 10px 6px 16px;
+  border-style: solid;
+  border-width: 51px 37px 30px 39px;
+  border-image-source: url("/hub/ui/deckbuilder/deck-panel-bg.png");
+  border-image-slice: 95 68 55 72 fill;
+  border-image-repeat: stretch;
 }
 
+/* The old "Home" text link, now a circular close button in the panel's
+   own top-right corner (matching .hub-overlay-close's pattern elsewhere
+   in the app) instead of a plain right-aligned text button above the
+   content - the text itself is hidden (font-size:0) since the art already
+   has its own X baked in. */
 .deck-builder-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
+  position: absolute;
+  top: -16px;
+  right: -16px;
+  z-index: 2;
 }
 
 .deck-builder-toolbar button {
-  font: inherit;
-  font-weight: 600;
-  padding: 8px 16px;
-  border: 1px solid var(--hc-border);
-  border-radius: var(--hc-radius-sm);
-  background: var(--hc-surface);
-  backdrop-filter: blur(8px);
-  color: var(--hc-text-h);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background-image: url("/hub/ui/deckbuilder/close-button-circle.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  font-size: 0;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .deck-builder-toolbar button:hover {
-  border-color: var(--hc-border-strong);
-  background: var(--hc-surface-strong);
+  transform: scale(1.08);
 }
 
 .saved-deck-section {
@@ -34,7 +68,7 @@
 .saved-deck-section-label {
   display: block;
   margin-bottom: 6px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -62,20 +96,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 26px;
   flex: none;
   background: var(--hc-surface-strong);
   border-right: 1px solid var(--hc-border);
   color: var(--hc-gold, var(--hc-text-h));
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .saved-deck-slot button {
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 10px 14px;
   border: none;
   background: var(--hc-surface);
   color: var(--hc-text-h);
@@ -101,12 +135,14 @@
   border-left: 1px solid var(--hc-border);
 }
 
-/* Points meter: label / progress track / fractional counter. */
+/* Points meter: label / progress track / fractional counter. Reverted
+   from the section-bar-wide.png border-image - the hard gold rectangle
+   around it read as an unwanted outline rather than a frame. */
 .points-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -219,7 +255,7 @@
   position: absolute;
   top: 2px;
   left: 4px;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.22);
   text-transform: lowercase;
@@ -286,7 +322,7 @@
   transform: translateX(-50%);
   background: linear-gradient(160deg, var(--hc-evo-strong), var(--hc-evo));
   color: #1a0b2e;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   padding: 1px 6px;
   border-radius: var(--hc-radius-sm);
@@ -317,7 +353,7 @@
 }
 
 .deck-slot-label {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--hc-text-h);
   text-align: center;
   line-height: 1.1;
@@ -328,14 +364,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
+  min-width: 20px;
+  height: 20px;
   padding: 0 4px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid #4a5568;
   color: #fff;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
 }
@@ -363,7 +399,7 @@
 
 .deck-hint {
   text-align: center;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--hc-text);
   margin: 16px 0 4px;
   padding-top: 10px;
@@ -399,7 +435,12 @@
 }
 
 /* Collectible-card styling: glass surface + a locked/inactive treatment
-   for anything disabled. */
+   for anything disabled. The ornate card-frame-small.png border-image
+   (one full 9-slice per card) was tried here but with ~20 cards on
+   screen at once, that many repeated gold frames read as cluttered
+   rather than premium - reverted to the plain glass card, keeping the
+   ornate border-image treatment reserved for the one-off chrome (outer
+   panel, points bar, buttons) where it doesn't compete with itself. */
 .palette-card {
   display: flex;
   flex-direction: column;
@@ -417,8 +458,8 @@
 
 .palette-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   border-color: var(--hc-border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .palette-card:active {
@@ -444,20 +485,20 @@
   box-shadow: none;
 }
 
-/* EVO cards: their own purple accent border, distinct at rest (not just
-   on hover/selection). */
+/* EVO cards: an ambient orange glow, the same color/technique as the Evo
+   Slot's own glow (.evo-orb-box above) so the two visually read as one
+   system - no border accent needed on top of it. */
 .palette-card:has(.evo-badge) {
-  border-color: rgba(157, 78, 221, 0.35);
+  box-shadow: 0 0 14px -2px rgba(217, 114, 15, 0.6);
 }
 
 .palette-card:has(.evo-badge):hover {
-  border-color: var(--hc-evo);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px -4px rgba(157, 78, 221, 0.6);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 18px 0 rgba(255, 157, 61, 0.8);
 }
 
 .palette-card:has(.evo-badge).expanded {
   border-color: var(--hc-gold);
-  box-shadow: 0 0 0 1px rgba(245, 197, 66, 0.35), 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px rgba(245, 197, 66, 0.35), 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px -2px rgba(217, 114, 15, 0.5);
 }
 
 /* The "?" demo trigger - a sleek hover-revealed action, top-right (below
@@ -496,6 +537,15 @@
   color: var(--hc-cyan);
 }
 
+/* Visible icon stays 16px so it doesn't dominate the card, but the actual
+   clickable/tappable area is expanded to the 44px accessibility minimum via
+   an invisible hit-area layered behind it. */
+.palette-card-help-btn::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+}
+
 /* Cost badge - top-right corner of the card. */
 .palette-card-cost-badge {
   position: absolute;
@@ -504,32 +554,21 @@
   z-index: 1;
 }
 
-/* EVO cards: purple gradient border + badge, top-left corner. */
+/* EVO-eligible cards are marked by an ambient orange glow instead (see
+   .palette-card:has(.evo-badge) below) - this element carries no visuals
+   of its own now, just the "Drag onto the Evo Slot..." hover tooltip, in
+   the same corner footprint the old badge used. */
 .evo-badge {
   position: absolute;
-  top: 5px;
-  left: 5px;
-  display: inline-flex;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid transparent;
-  background-image:
-    linear-gradient(rgba(20, 10, 32, 0.85), rgba(20, 10, 32, 0.85)),
-    linear-gradient(135deg, #e9d5ff, var(--hc-evo), #5b1a8f);
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-  border-radius: 999px;
-  padding: 2px 6px;
-  max-width: calc(100% - 26px);
+  top: 0;
+  left: 0;
+  width: 46px;
+  height: 46px;
   z-index: 1;
 }
 
 .evo-badge-text {
-  font-size: 8px;
-  font-weight: 800;
-  color: var(--hc-evo-strong);
-  letter-spacing: 0.3px;
-  white-space: nowrap;
+  display: none;
 }
 
 /* Uniform 64x64 icon container so every card carries the same visual
@@ -550,7 +589,7 @@
 }
 
 .palette-card-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--hc-text-h);
 }
@@ -644,13 +683,16 @@
 }
 
 .piece-demo-caption {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-text);
   margin: 0;
 }
 
 /* Evo Slot - a specialized socket/pedestal rather than a plain card
-   outline. */
+   outline. Reverted from the card-frame-tall.png border-image, same
+   reasoning as .palette-card above - sitting right next to the (now
+   plain) card grid, one ornate frame there looked mismatched rather than
+   intentional. */
 .evo-orb-box {
   position: relative;
   flex: 0 0 150px;
@@ -659,7 +701,7 @@
   border-radius: var(--hc-radius);
   background: linear-gradient(165deg, rgba(245, 197, 66, 0.1), rgba(255, 255, 255, 0.02));
   backdrop-filter: blur(8px);
-  box-shadow: 0 10px 30px -14px rgba(245, 197, 66, 0.4);
+  box-shadow: 0 10px 30px -14px rgba(217, 114, 15, 0.55);
 }
 
 @media (max-width: 640px) {
@@ -680,7 +722,7 @@
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
   color: var(--hc-text-h);
-  font-size: 13px;
+  font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -698,10 +740,17 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  position: relative;
 }
 
 .evo-help-btn:hover {
   background: rgba(245, 197, 66, 0.15);
+}
+
+.evo-help-btn::after {
+  content: "";
+  position: absolute;
+  inset: -13px;
 }
 
 .evo-orb-box-empty {
@@ -746,7 +795,7 @@
 
 .evo-socket-hint {
   margin: 0;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--hc-text);
   text-align: center;
@@ -855,7 +904,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   color: var(--hc-bg-edge);
   background: linear-gradient(160deg, var(--hc-gold-strong), var(--hc-gold-dark));
@@ -885,6 +934,12 @@
   color: #ef4444;
 }
 
+.evo-slot-reset-btn::after {
+  content: "";
+  position: absolute;
+  inset: -13px;
+}
+
 .evo-slot-piece-img {
   width: 56px;
   height: 56px;
@@ -898,7 +953,7 @@
 }
 
 .evo-slot-piece-label {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--hc-text-h);
 }

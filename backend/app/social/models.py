@@ -69,6 +69,7 @@ class FriendPublic(BaseModel):
     id: str
     username: str
     online: bool
+    level: int
 
 
 class SendFriendRequestPayload(BaseModel):

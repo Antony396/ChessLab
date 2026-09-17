@@ -292,7 +292,10 @@ def decline_request(request_id: str, user_id: str = Depends(get_current_user_id)
 @router.get("/friends", response_model=list[FriendPublic])
 def list_friends(user_id: str = Depends(get_current_user_id)):
     rows = db.list_friends(user_id)
-    return [FriendPublic(id=r["id"], username=r["username"], online=store.is_user_online(r["id"])) for r in rows]
+    return [
+        FriendPublic(id=r["id"], username=r["username"], online=store.is_user_online(r["id"]), level=db.level_for_xp(r["xp"]))
+        for r in rows
+    ]
 
 
 # --- Code-free PvP challenges --------------------------------------------

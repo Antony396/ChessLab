@@ -28,6 +28,10 @@
   border-color: var(--hc-gold);
 }
 
+.friends-search input:focus-visible {
+  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.5);
+}
+
 .friends-search-results {
   position: absolute;
   z-index: 5;
@@ -51,13 +55,13 @@
   justify-content: space-between;
   gap: 10px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text-h);
 }
 
 .friends-search-results button {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   padding: 5px 10px;
   border-radius: 999px;
@@ -73,12 +77,12 @@
 }
 
 .friends-relationship-tag {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
 .friends-error {
-  font-size: 13px;
+  font-size: 14px;
   color: #fca5a5;
   background: rgba(127, 29, 29, 0.25);
   border: 1px solid rgba(248, 113, 113, 0.35);
@@ -88,7 +92,7 @@
 
 .friends-section h3 {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -97,7 +101,7 @@
 
 .friends-hint {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hc-text);
 }
 
@@ -135,6 +139,14 @@
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
 }
 
+.friends-level-tag {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hc-gold, #f5c542);
+  opacity: 0.9;
+}
+
 .friends-row-actions {
   margin-left: auto;
   display: flex;
@@ -143,7 +155,7 @@
 
 .friends-row-actions button {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   padding: 5px 10px;
   border-radius: 999px;

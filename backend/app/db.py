@@ -135,6 +135,16 @@ def init_db() -> None:
             user_id TEXT PRIMARY KEY,
             solved_json TEXT NOT NULL DEFAULT '[]'
         );
+        CREATE TABLE IF NOT EXISTS hero_puzzle_map_nodes (
+            node_index INTEGER PRIMARY KEY,
+            definition_json TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS hero_map_puzzle_progress (
+            user_id TEXT PRIMARY KEY,
+            solved_json TEXT NOT NULL DEFAULT '[]'
+        );
         CREATE TABLE IF NOT EXISTS owned_skins (
             user_id TEXT NOT NULL,
             skin_key TEXT NOT NULL,
@@ -347,7 +357,7 @@ def list_incoming_requests(user_id: str) -> list[dict]:
 
 def list_friends(user_id: str) -> list[dict]:
     return get_conn().execute(
-        "SELECT u.id, u.username FROM friend_requests fr "
+        "SELECT u.id, u.username, u.xp FROM friend_requests fr "
         "JOIN users u ON u.id = (CASE WHEN fr.from_user_id = %s THEN fr.to_user_id ELSE fr.from_user_id END) "
         "WHERE fr.status = 'accepted' AND (fr.from_user_id = %s OR fr.to_user_id = %s) "
         "ORDER BY u.username_lower",
@@ -778,7 +788,7 @@ def record_daily_solve(user_id: str, puzzle_date: str) -> dict:
 # The 50-node puzzle progression (see app/puzzle_map/store.py for what each
 # node actually is) - just a permanent per-user set of solved node indices,
 # same durability tradeoff as the streak table above. Reaching node 50
-# unlocks the Hydra King skin (see frontend's skinStore.js).
+# unlocks the Regal King skin (see frontend's skinStore.js).
 
 
 def get_map_progress(user_id: str) -> list[int]:
@@ -793,6 +803,62 @@ def record_map_solve(user_id: str, index: int) -> list[int]:
     conn = get_conn()
     conn.execute(
         "INSERT INTO map_puzzle_progress (user_id, solved_json) VALUES (%s, %s) "
+        "ON CONFLICT(user_id) DO UPDATE SET solved_json = excluded.solved_json",
+        (user_id, json.dumps(solved)),
+    )
+    conn.commit()
+    return solved
+
+
+# --- Hero Puzzle Map ---
+#
+# A second 50-slot puzzle route, structurally identical to the Puzzle Map
+# above (same sequential-unlock/permanent-solved-set shape - see
+# app/hero_puzzle_map/store.py), but its nodes are hand-authored by whoever
+# posts them via POST /hero-puzzle-map/nodes (see hero_puzzle_map_routes.py)
+# rather than derived from the shared Lichess pool, so unlike the original
+# map not every slot 1-50 necessarily has a puzzle yet - get_hero_map_node
+# returning None for an un-authored index is expected, not an error.
+# Reaching node 50 unlocks the Hydra King skin (moved here from the
+# original Puzzle Map - see frontend's skinStore.js).
+
+
+def create_hero_map_node(index: int, definition: dict, created_by: str | None) -> None:
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO hero_puzzle_map_nodes (node_index, definition_json, created_by, created_at) "
+        "VALUES (%s, %s, %s, %s) "
+        "ON CONFLICT(node_index) DO UPDATE SET "
+        "definition_json=excluded.definition_json, created_by=excluded.created_by, created_at=excluded.created_at",
+        (index, json.dumps(definition), created_by, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+
+
+def get_hero_map_node(index: int) -> dict | None:
+    row = get_conn().execute(
+        "SELECT definition_json FROM hero_puzzle_map_nodes WHERE node_index = %s", (index,)
+    ).fetchone()
+    return json.loads(row["definition_json"]) if row else None
+
+
+def get_authored_hero_map_indices() -> set[int]:
+    rows = get_conn().execute("SELECT node_index FROM hero_puzzle_map_nodes").fetchall()
+    return {row["node_index"] for row in rows}
+
+
+def get_hero_map_progress(user_id: str) -> list[int]:
+    row = get_conn().execute(
+        "SELECT solved_json FROM hero_map_puzzle_progress WHERE user_id = %s", (user_id,)
+    ).fetchone()
+    return json.loads(row["solved_json"]) if row else []
+
+
+def record_hero_map_solve(user_id: str, index: int) -> list[int]:
+    solved = sorted(set(get_hero_map_progress(user_id)) | {index})
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO hero_map_puzzle_progress (user_id, solved_json) VALUES (%s, %s) "
         "ON CONFLICT(user_id) DO UPDATE SET solved_json = excluded.solved_json",
         (user_id, json.dumps(solved)),
     )

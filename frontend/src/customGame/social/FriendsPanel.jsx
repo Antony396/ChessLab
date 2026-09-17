@@ -170,6 +170,7 @@ export default function FriendsPanel({ token, onVisit, onChallenge }) {
               <li key={f.id}>
                 <span className={`friends-status-dot${f.online ? " online" : ""}`} aria-hidden="true" />
                 <span>{f.username}</span>
+                <span className="friends-level-tag">Lv {f.level}</span>
                 <span className="friends-row-actions">
                   <button type="button" disabled={!f.online} onClick={() => onVisit(f)} title={f.online ? "" : "Offline"}>
                     Visit
