@@ -70,6 +70,7 @@ class FriendPublic(BaseModel):
     username: str
     online: bool
     level: int
+    equipped_skin: str
 
 
 class SendFriendRequestPayload(BaseModel):

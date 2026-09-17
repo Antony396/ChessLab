@@ -357,7 +357,7 @@ def list_incoming_requests(user_id: str) -> list[dict]:
 
 def list_friends(user_id: str) -> list[dict]:
     return get_conn().execute(
-        "SELECT u.id, u.username, u.xp FROM friend_requests fr "
+        "SELECT u.id, u.username, u.xp, u.equipped_skin FROM friend_requests fr "
         "JOIN users u ON u.id = (CASE WHEN fr.from_user_id = %s THEN fr.to_user_id ELSE fr.from_user_id END) "
         "WHERE fr.status = 'accepted' AND (fr.from_user_id = %s OR fr.to_user_id = %s) "
         "ORDER BY u.username_lower",

@@ -10,7 +10,7 @@ import {
   LeaderboardProp,
   PlaySection,
   PlayerStatsBadge,
-  FriendsButton,
+  FriendsSection,
 } from "./HubWorld";
 import { HUB_COLS, HUB_ROWS, TILE_SIZE, COMMONS_EXIT_TILE, LEADERBOARD_TILE, isInsideRoom } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
@@ -116,7 +116,7 @@ export default function CommonsWorld({
       <div className="hub-side-panel right">
         <PlayerStatsBadge token={token} />
         <PlaySection isVisiting={false} onOpenPuzzles={onOpenPuzzles} onOpenMatchQueue={() => hub.setActiveOverlay("match-queue")} />
-        <FriendsButton onClick={onOpenFriends} />
+        <FriendsSection token={token} onOpenFriends={onOpenFriends} />
       </div>
       <div className="hub-room-wrap">
         <div

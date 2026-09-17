@@ -12,7 +12,7 @@ import {
 } from "./useHubState";
 import { KING_SKINS, useEquippedSkin } from "../skinStore";
 import { CHAT_BUBBLE_DURATION_MS } from "../social/usePresence";
-import { sendFriendRequest, fetchMe, fetchBattlePassState } from "../social/api";
+import { sendFriendRequest, fetchMe, fetchBattlePassState, listFriends } from "../social/api";
 import { pieceImageSrc } from "../../pieces/flat2dPieces";
 import SpeechBubble from "./SpeechBubble";
 import "./hubWorld.css";
@@ -191,11 +191,76 @@ export function SkinButton({ onClick }) {
   );
 }
 
-export function FriendsButton({ onClick }) {
+// Right-sidebar "Friends" entry - a quick-glance dropdown (same expand/
+// collapse pattern as PlaySection below) rather than jumping straight to
+// the full Friends overlay. Fetches the list itself, once, the first
+// time it's expanded (not on mount - most sessions never open it) rather
+// than threading it down from a parent. Deliberately read-only/compact:
+// no search, no incoming requests, no Visit/Challenge buttons here -
+// those still live in the full panel (see onOpenFriends, the "Manage
+// Friends" row at the bottom), this is just "who's on my list and what
+// are they playing as" at a glance.
+export function FriendsSection({ token, onOpenFriends }) {
+  const [expanded, setExpanded] = useState(false);
+  const [friends, setFriends] = useState(null); // null = not fetched yet
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!expanded || friends !== null || !token) return;
+    let cancelled = false;
+    listFriends(token)
+      .then((result) => {
+        if (!cancelled) setFriends(result);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, friends, token]);
+
   return (
-    <button type="button" className="hub-friends-toggle" onClick={onClick} title="Friends">
-      <span>Friends</span>
-    </button>
+    <div className="hub-friends-section">
+      <button
+        type="button"
+        className="hub-friends-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        title="Friends"
+      >
+        <span>Friends</span>
+        <span className={`hub-play-chevron${expanded ? " open" : ""}`}>
+          <ChevronIcon />
+        </span>
+      </button>
+      {expanded && (
+        <div className="hub-friends-dropdown">
+          {error ? (
+            <p className="hub-friends-dropdown-hint">{error}</p>
+          ) : friends === null ? (
+            <p className="hub-friends-dropdown-hint">Loading…</p>
+          ) : friends.length === 0 ? (
+            <p className="hub-friends-dropdown-hint">No friends yet.</p>
+          ) : (
+            friends.map((f) => {
+              const skin = KING_SKINS[f.equipped_skin] || KING_SKINS.classic;
+              return (
+                <div key={f.id} className="hub-friends-dropdown-row" title={f.online ? "Online" : "Offline"}>
+                  <img src={skin.headSrc} alt="" className="hub-friends-dropdown-icon" />
+                  <span className={`friends-status-dot${f.online ? " online" : ""}`} aria-hidden="true" />
+                  <span className="hub-friends-dropdown-name">{f.username}</span>
+                  <span className="hub-friends-dropdown-level">Lv {f.level}</span>
+                </div>
+              );
+            })
+          )}
+          <button type="button" className="hub-friends-dropdown-manage" onClick={onOpenFriends}>
+            Add / Manage Friends
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -481,7 +546,7 @@ export default function HubWorld({
           onOpenPuzzles={onOpenPuzzles}
           onOpenMatchQueue={() => hub.setActiveOverlay("match-queue")}
         />
-        <FriendsButton onClick={onOpenFriends} />
+        <FriendsSection token={token} onOpenFriends={onOpenFriends} />
       </div>
       <div className="hub-room-wrap">
         {isVisiting && <VisitingBanner username={visiting.username} onReturnHome={onReturnHome} />}

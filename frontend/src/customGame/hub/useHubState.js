@@ -90,14 +90,19 @@ const SHOP_AVATAR_START = { x: 7, y: 6 };
 // pixel-by-pixel for where the wall-to-floor shadow seam falls, mapped
 // through each image's own background-size: cover transform into this
 // grid's coordinate space, then averaged (the two rooms' independently-
-// measured floor tops landed within a few px of each other). The
-// horizontal radius, on the other hand, stays fully inscribed - an
-// initial attempt at tightening it too ended up excluding real floor
-// near the pedestals on the sides (the floor is wider side-to-side than
-// a single sampled row suggested), so only the vertical extent - where
-// the wall band genuinely eats into the grid - is pulled in.
-const ELLIPSE_CENTER = { x: (HUB_COLS * TILE_SIZE) / 2, y: 354 };
-const ELLIPSE_RADII = { x: (HUB_COLS * TILE_SIZE) / 2, y: 195 };
+// measured floor tops landed within a few px of each other), then nudged
+// up one more tile row on top per follow-up feedback (center moved up
+// and radius grown by one TILE_SIZE together, so the bottom edge stays
+// put and only the top gains a row).
+//
+// The horizontal radius stays inscribed minus one tile on each side -
+// fully inscribed briefly, but an initial attempt at tightening it
+// further ended up excluding real floor near the pedestals on the sides
+// (the floor is wider side-to-side than a single sampled row suggested),
+// so it's pulled in only slightly now, by request, rather than to match
+// a measured boundary.
+const ELLIPSE_CENTER = { x: (HUB_COLS * TILE_SIZE) / 2, y: 354 - TILE_SIZE / 2 };
+const ELLIPSE_RADII = { x: (HUB_COLS * TILE_SIZE) / 2 - TILE_SIZE, y: 195 + TILE_SIZE / 2 };
 
 export function isInsideRoom(tile) {
   const px = tile.x * TILE_SIZE + TILE_SIZE / 2;

@@ -140,21 +140,28 @@
   user-select: none;
 }
 
+/* Shrunk from 6.4cqw/44px+2.6cqw text - at the old size these read as
+   big flat UI discs plastered over the painted map art, out of place
+   next to the castles/forests underneath. Small enough now to read as a
+   waypoint marker rather than a dominant UI element; the number stays
+   (it's still how players track their place in the 50-puzzle route) but
+   quieter - smaller text, a thinner border, and a bit more transparent
+   background so the map shows through more. */
 .puzzle-map-node {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 6.4cqw;
-  height: 6.4cqw;
-  min-width: 44px;
-  min-height: 44px;
+  width: 4cqw;
+  height: 4cqw;
+  min-width: 26px;
+  min-height: 26px;
   border-radius: 50%;
-  border: 0.4cqw solid var(--hc-border-strong);
-  background: rgba(20, 22, 28, 0.75);
+  border: 0.25cqw solid var(--hc-border-strong);
+  background: rgba(20, 22, 28, 0.6);
   backdrop-filter: blur(2px);
   color: var(--hc-text-h);
   font-family: "Rajdhani", sans-serif;
   font-weight: 700;
-  font-size: 2.6cqw;
+  font-size: 1.5cqw;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -177,10 +184,10 @@
 }
 
 .puzzle-map-node.finale {
-  width: 9cqw;
-  height: 9cqw;
-  min-width: 48px;
-  min-height: 48px;
+  width: 5.6cqw;
+  height: 5.6cqw;
+  min-width: 30px;
+  min-height: 30px;
   border-color: var(--hc-gold);
   box-shadow: 0 0 14px rgba(230, 190, 90, 0.6);
 }
